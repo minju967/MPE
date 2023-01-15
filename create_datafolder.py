@@ -9,33 +9,35 @@ import os
 
 
 def Separate_image(opt):
-    # label_df = pd.read_csv(opt.csv)
-
-
-    label_df = pd.DataFrame(data=[[0, 'A123.png', 0,1,1,0,0,1,'C:\\home', True]], columns=['Idx', 'Name', 'A', 'HSM', 'C', 'Grinding', 'Wire', 'None', 'Path', 'Labeled'])
-    unlabeled_path = None
+    label_df = pd.read_csv(opt.csv)
 
     for idx in range(len(label_df.index)):
-        row = label_df.iloc[idx]        # 행번호로 불러오기
-        img_path = row['Path']
-        img_label = list(row['A':'None'].to_list())
-        _labeled = row['Labeled']
+        row         = label_df.iloc[idx]        # 행번호로 불러오기
+        img_name    = row['Name']
+        img_path    = row['Path']
+        _labeled    = row['Labeled']
+        img_label   = list(row['A':'None'].to_list())
+        classes     = ['A', 'HSM', 'C', 'Cut', 'Wire', 'None']
+        
+        unlabeled_path = os.path.join('D:\\VS_CODE\\Paper\\Data', 'unlabeled')
+        os.makedirs(unlabeled_path, exist_ok=True)
+        un_dst_path = os.path.join(unlabeled_path, img_name)
 
         if _labeled:
             for i in range(6):
-                cls_path = None
+                cls_path = os.path.join('D:\\VS_CODE\\Paper\\Data', classes[i])
+                os.makedirs(cls_path, exist_ok=True)
+                dst_path = os.path.join(cls_path, img_name)
+
                 if img_label[i]:
-                    pass
-                else:
-                    shutil.copyfile(src=img_path, dst=cls_path)
-                    pass
+                    shutil.copyfile(src=img_path, dst=dst_path)
         else:
-            shutil.copyfile(src=img_path, dst=unlabeled_path)
+            shutil.copyfile(src=img_path, dst=un_dst_path)
 
     return
 
-def create_datafolder(path):
-    folders = os.listdir(path)  # Data folder에 들어있는 파일 리스트
+def create_datafolder(opt):
+    folders = os.listdir(opt.save)  # Data folder에 들어있는 파일 리스트
     num_list = []
     for f in folders:
         if 'dataset_' in f:
@@ -46,24 +48,24 @@ def create_datafolder(path):
     if len(num_list) == 0:
         folder_name = 'dataset_0'
     else:    
-        folder_name = f'dataset_{num_list[-1]+1}'
+        folder_name = f'dataset_{int(num_list[-1])+1}'
     
-    os.makedirs(os.path.join(path, folder_name, 'Train'))
-    os.makedirs(os.path.join(path, folder_name, 'Test'))
+    os.makedirs(os.path.join(opt.save, folder_name, 'Train'))
+    os.makedirs(os.path.join(opt.save, folder_name, 'Test'))
 
-    return os.path.join(path, folder_name)
+    return os.path.join(opt.save, folder_name)
 
 def create_dataset(opt):
 
     random.seed(datetime.now().timestamp())
 
-    save_df_path = create_datafolder(opt.save)
+    save_df_path = create_datafolder(opt)
     All_df = pd.read_csv(opt.csv)
-    train_df = pd.DataFrame(index=range(0,0), columns=['Idx', 'Name', 'A', 'HSM', 'C', 'Grinding', 'Wire', 'None', 'Path', 'Labeled'])
-    test_df = pd.DataFrame(index=range(0,0), columns=['Idx', 'Name', 'A', 'HSM', 'C', 'Grinding', 'Wire', 'None', 'Path', 'Labeled'])
+    train_df = pd.DataFrame(index=range(0,0), columns=['Idx', 'Name', 'A', 'HSM', 'C', 'Cut', 'Wire', 'None', 'Path', 'Labeled'])
+    test_df = pd.DataFrame(index=range(0,0), columns=['Idx', 'Name', 'A', 'HSM', 'C', 'Cut', 'Wire', 'None', 'Path', 'Labeled'])
 
     # class_list = os.listdir(opt.path)
-    class_list = ['A', 'B', 'C', 'D', 'E']
+    class_list = ['A', 'HSM', 'C', 'Cut', 'Wire']
     class_list.sort()
 
     train_data = []
@@ -73,21 +75,22 @@ def create_dataset(opt):
         cls_path = os.path.join(opt.path, cls)
         num = len(glob.glob(cls_path+'\\*.png'))
         num_of_test = int(num * 0.2)
-
         idx_list = list(range(num))
-        
+         
         # Test Image 선택
-        for idx in num_of_test:
+        print(f'\n{cls}_Test Image: {num_of_test}')
+        for idx in range(num_of_test):
             file_name = glob.glob(cls_path+'\\*.png')[idx].split('\\')[-1]
             test_data.append(glob.glob(cls_path+'\\*.png')[idx])
             idx_list.remove(idx)
-            test_df.loc[len(test_df)] = All_df[All_df['Name'] == file_name]
+            test_df = pd.concat([test_df, All_df.loc[All_df.Name==file_name]], ignore_index=True, bool_only=True)
         
         # Train Image 선택
+        print(f'{cls}_Train Image: {len(idx_list)}')
         for idx in idx_list:
             file_name = glob.glob(cls_path+'\\*.png')[idx].split('\\')[-1]
             train_data.append(glob.glob(cls_path+'\\*.png')[idx])
-            train_df.loc[len(train_df)] = All_df[All_df['Name'] == file_name]
+            train_df = pd.concat([train_df, All_df.loc[All_df.Name==file_name]], ignore_index=True, bool_only=True)
 
     # 중복제거
     train_data = list(set(train_data))
@@ -115,9 +118,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--path', type=str, default='D:\\VS_CODE\\Paper\\Data', help="folder_name")                     # Data folder에는 클래스별 데이터
     parser.add_argument('--save', type=str, default='D:\\VS_CODE\\Paper\\Datafolder', help="Save folder")               # Datafolder folder에는 학습/평가에 사용될 데이터셋 폴더
-    parser.add_argument('--csv', type=str, default='D:\\VS_CODE\\Paper\\Data\\label.csv', help="data_label.csv")
+    parser.add_argument('--csv', type=str, default='D:\\VS_CODE\\Paper\\Data\\labeled_data.csv', help="data_label.csv")
     args = parser.parse_args()
     
-    Separate_image(args.csv)
-    # create_dataset(args.path)
+    # Separate_image(args)
+    create_dataset(args)
     
