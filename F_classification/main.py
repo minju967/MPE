@@ -45,11 +45,11 @@ parser.add_argument('--workers', type=int, default=0, help="workers")
 parser.add_argument('--show', type=bool, default=False, help="dataset show or not")          
 parser.add_argument('--backbone', type=str, default='Resnet18', help="backbone model")    
 parser.add_argument('--gpu-index', default=0, type=int, help='Gpu index.')
-parser.add_argument('--lr', '--learning-rate', default=0.0003, type=float,
-                    metavar='LR', help='initial learning rate', dest='lr')
-parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
-                    metavar='W', help='weight decay (default: 1e-4)',
-                    dest='weight_decay')
+parser.add_argument('--lr', '--learning-rate', default=0.0003, type=float, metavar='LR', help='initial learning rate', dest='lr')
+parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)', dest='weight_decay')
+parser.add_argument('--fp16-precision', action='store_true', help='Whether or not to use 16-bit precision GPU training.')
+parser.add_argument('--disable-cuda', action='store_true', help='Disable CUDA')
+parser.add_argument('--log-every-n-steps', default=10, type=int, help='Log every n steps')
 
 class cls_Trainer():
     def __init__(self, model, train_dataset, test_data, args, device, save) -> None:
@@ -64,26 +64,26 @@ class cls_Trainer():
         self.save_model_path = save
         self.test_df = pd.DataFrame(index=range(0,0), columns=['Idx', 'Name', 'A', 'HSM', 'C', 'Cut', 'Wire', 'None', 'Path'])
 
-        dictConfig({
-        'version': 1,
-        'formatters': {
-            'default': {
-                'format':'[%(asctime)s] %(message)s'
-            }
-        },
-        'handlers': {
-            'file': {
-                'level': 'INFO',
-                'class': 'logging.FileHandler',
-                'filename': os.path.join(save, 'debug.log'),
-                'formatter': 'default',
-            },
-        },
-        'root': {
-            'level': 'DEBUG',
-            'handlers': ['file']
-        }
-        })  
+        # dictConfig({
+        # 'version': 1,
+        # 'formatters': {
+        #     'default': {
+        #         'format':'[%(asctime)s] %(message)s'
+        #     }
+        # },
+        # 'handlers': {
+        #     'file': {
+        #         'level': 'INFO',
+        #         'class': 'logging.FileHandler',
+        #         'filename': os.path.join(save, 'debug.log'),
+        #         'formatter': 'default',
+        #     },
+        # },
+        # 'root': {
+        #     'level': 'DEBUG',
+        #     'handlers': ['file']
+        # }
+        # })  
 
     def train(self, epochs):
         max_acc = 0
@@ -208,8 +208,8 @@ def main():
     args            = parser.parse_args()
     experiment      = check_exp(args)
 
-    device          = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    save_path       = os.path.join(args.save, experiment)
+    args.device     = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    args.save_path  = os.path.join(args.save, experiment)
 
     # Pre-train model Fine tuning
     '''

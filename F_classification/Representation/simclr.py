@@ -12,14 +12,13 @@ torch.manual_seed(0)
 
 
 class SimCLR(object):
-
     def __init__(self, *args, **kwargs):
-        self.args = kwargs['args']
-        self.model = kwargs['model'].to(self.args.device)
-        self.optimizer = kwargs['optimizer']
-        self.scheduler = kwargs['scheduler']
-        self.writer = SummaryWriter()
-        logging.basicConfig(filename=os.path.join(self.writer.log_dir, 'training.log'), level=logging.DEBUG)
+        self.args       = kwargs['args']
+        self.model      = kwargs['model'].to(self.args.device)
+        self.optimizer  = kwargs['optimizer']
+        self.scheduler  = kwargs['scheduler']
+        self.writer     = SummaryWriter()
+        logging.basicConfig(filename=os.path.join(args.save_path, 'training.log'), level=logging.DEBUG)
         self.criterion = torch.nn.CrossEntropyLoss().to(self.args.device)
 
     def info_nce_loss(self, features):
@@ -58,7 +57,7 @@ class SimCLR(object):
         scaler = GradScaler(enabled=self.args.fp16_precision)
 
         # save config file
-        save_config_file(self.writer.log_dir, self.args)
+        save_config_file(self.args.save_path, self.args)
 
         n_iter = 0
         logging.info(f"Start SimCLR training for {self.args.epochs} epochs.")
@@ -101,7 +100,7 @@ class SimCLR(object):
         checkpoint_name = 'checkpoint_{:04d}.pth.tar'.format(self.args.epochs)
         save_checkpoint({
             'epoch': self.args.epochs,
-            'arch': self.args.arch,
+            'arch': self.args.backbone,
             'state_dict': self.model.state_dict(),
             'optimizer': self.optimizer.state_dict(),
         }, is_best=False, filename=os.path.join(self.writer.log_dir, checkpoint_name))
