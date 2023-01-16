@@ -71,6 +71,8 @@ from torchvision.transforms import (
                                     Resize,
                                     ToTensor,
                                 )
+import albumentations
+import cv2
 
 class ContrastiveLearningViewGenerator(object):
     """Take two random crops of one image as the query and key."""
@@ -116,7 +118,15 @@ class ContrastiveLearningDataset:
                                     # rnd_gaussian_blur,
                                     resize
                                 ])
-        return image_transform
+        albumentations_transform = albumentations.Compose([
+                                    albumentations.RandomCrop(224, 224),
+                                    albumentations.Resize(256, 256), 
+                                    albumentations.Rotate(limit=180, p=1, border_mode=cv2.BORDER_REPLICATE),
+                                    albumentations.RGBShift(p=0.3),
+                                    albumentations.Blur(blur_limit=(kernel_size, kernel_size), p=0.3),
+                                    albumentations.pytorch.transforms.ToTensor()
+])
+        return albumentations_transform
 
     def __init__(self, root_folder, phase, transform):
         self.dir           = os.path.join(root_folder, phase)
