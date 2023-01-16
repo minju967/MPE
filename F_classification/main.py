@@ -1,33 +1,38 @@
 import os
-import csv
 import cv2
+import csv
 import torch
 import torch.nn
-import numpy as np
-import pandas as pd
-import argparse
-import torch.optim as optim
 import glob
 import random
 import logging
+import argparse
+import numpy             as np
+import pandas            as pd
+import torch.optim       as optim
 import matplotlib.pyplot as plt
-from time import time
-from torchsummary import summary
-from PIL import Image
-from typing import Tuple
-from torch import nn, Tensor
-from torch.utils.data import Dataset, DataLoader
-from IPython.display import display
-from torch.nn import functional as F
-from logging.config import dictConfig
-from torchvision import transforms
-from torchvision.models import resnet50, resnet18, resnet34
-from efficientnet_pytorch import EfficientNet
 
-from create_dataset import fine_tuning_Dataset, ContrastiveLearningDataset
-from create_dataset import ContrastiveLearningViewGenerator
-from create_dataset import ContrastiveLearningDataset as contrastive_dataset
-from train_model import ResNetSimCLR
+from time   import time
+from PIL    import Image
+from typing import Tuple
+from torch  import nn, Tensor
+
+from torchsummary           import summary
+from torchvision            import transforms
+from torch.nn               import functional as F
+from IPython.display        import display
+from logging.config         import dictConfig
+from efficientnet_pytorch   import EfficientNet
+from torch.utils.data       import Dataset, DataLoader
+from torchvision.models     import resnet50, resnet18, resnet34
+
+from Representation.simclr  import SimCLR
+from Representation.models  import ResNetSimCLR
+from Fine_tuning.models     import finetuning_Model
+from create_dataset         import ContrastiveLearningViewGenerator
+from create_dataset         import fine_tuning_Dataset, ContrastiveLearningDataset
+from create_dataset         import ContrastiveLearningDataset as contrastive_dataset
+
 # logger = logging.getLogger()
 
 parser = argparse.ArgumentParser()
@@ -38,86 +43,13 @@ parser.add_argument('--batch_size', type=int, default=256, help="batch Size")
 parser.add_argument('--epochs', type=int, default=10, help="Epochs")          
 parser.add_argument('--workers', type=int, default=0, help="workers")          
 parser.add_argument('--show', type=bool, default=False, help="dataset show or not")          
-parser.add_argument('--backbone', type=str, default='Resnet18', help="backbone model")          
-
-class Dataset(Dataset):
-    def __init__(self, dir, phase) -> None:
-        super().__init__()
-        self.dir = os.path.join(dir, phase)
-        if phase == 'Train':
-            self.transforms = transforms.Compose([
-                            transforms.RandomHorizontalFlip(p=0.5),
-                            transforms.RandomVerticalFlip(p=0.5),
-                            transforms.Resize((256,256)),
-                            transforms.ToTensor(),
-                            transforms.Normalize
-                            ([0.485, 0.456, 0.406],
-                             [0.229, 0.224, 0.225])
-                            ])
-        else:
-            self.transforms = transforms.Compose([
-                            transforms.Resize((256,256)),
-                            transforms.ToTensor(),
-                            transforms.Normalize
-                            ([0.485, 0.456, 0.406],
-                             [0.229, 0.224, 0.225])
-                            ])
-
-        self.image_list = [file for file in os.listdir(self.dir) if file.endswith('.png')]
-        random.shuffle(self.image_list)
-
-        self.label_df = pd.read_csv(self.dir+'\\label.csv')
-
-    def __len__(self) -> int:
-        return len(self.image_list)
-
-    def __getitem__(self, index: int) -> Tuple[Tensor]:
-        image_name = self.image_list[index]
-        img_path = os.path.join(self.dir, image_name)        
-
-        image = Image.open(img_path).convert('RGB')
-        target = self.label_df[self.label_df.Name==image_name].values.tolist()[0][3:9]
-
-        target = np.array(target).astype(np.float32)
-        if self.transforms is not None:
-            image = self.transforms(image)
-        
-        return image, target, image_name
-
-class finetuning_Model(nn.Module):
-    def __init__(self, model_name) -> None:
-        super().__init__()
-        self.model_name = model_name
-        if model_name == 'Resnet18':
-            self.model = resnet18(pretrained=True)
-            self.model.fc = nn.Linear(512, 6)
-        elif model_name == 'Resnet34':
-            self.model = resnet34(pretrained=True)
-            self.model.fc = nn.Linear(512, 6)
-        elif model_name == 'Resnet50':
-            self.model = resnet50(pretrained=True)
-            self.classifier = nn.Linear(1000, 6)
-        elif model_name == 'EfficientNet':
-            self.model = EfficientNet.from_pretrained('efficientnet-b3', in_channels=3)
-            self.classifier = nn.Linear(1000, 6)
-
-    def forward(self, x):
-        if self.model_name == 'Resnet50':
-            x = self.model(x)
-            y = self.classifier(x)
-        elif self.model_name == 'Resnet18':
-            y = self.model(x)
-        elif self.model_name == 'Resnet34':
-            y = self.model(x)
-        elif self.model_name == 'EfficientNet':
-            x = F.relu(self.model(x))
-            y = self.classifier(x)
-
-        return y
-
-class representation_Model(nn.Module):
-    def __init__(self, model_name) -> None:
-        super().__init__()
+parser.add_argument('--backbone', type=str, default='Resnet18', help="backbone model")    
+parser.add_argument('--gpu-index', default=0, type=int, help='Gpu index.')
+parser.add_argument('--lr', '--learning-rate', default=0.0003, type=float,
+                    metavar='LR', help='initial learning rate', dest='lr')
+parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
+                    metavar='W', help='weight decay (default: 1e-4)',
+                    dest='weight_decay')
 
 class cls_Trainer():
     def __init__(self, model, train_dataset, test_data, args, device, save) -> None:
@@ -246,10 +178,6 @@ class cls_Trainer():
         
         return epoch_test_acc
 
-# class Representation_Trainer():
-
-#     return
-
 def check_exp(args):
     idx_list = []
     exp_list = os.listdir(args.save)
@@ -315,10 +243,14 @@ def main():
                             num_workers=args.workers, pin_memory=True, drop_last=True)
 
     model = ResNetSimCLR(base_model=args.arch, out_dim=args.out_dim)
+    optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay)
 
-
-
-    # Trainer         = Representation_Trainer(model=model, train_dataset=train_loader, test_data=test_loader, args=args, device=device, save=save_path)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader), eta_min=0,
+                                                           last_epoch=-1)
+    #  It’s a no-op if the 'gpu_index' argument is a negative integer or None.
+    with torch.cuda.device(args.gpu_index):
+        simclr = SimCLR(model=model, optimizer=optimizer, scheduler=scheduler, args=args)
+        simclr.train(train_loader)
 
     return 
 
