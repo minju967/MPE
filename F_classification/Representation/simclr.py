@@ -17,8 +17,9 @@ class SimCLR(object):
         self.model      = kwargs['model'].to(self.args.device)
         self.optimizer  = kwargs['optimizer']
         self.scheduler  = kwargs['scheduler']
+        self.save_path  = kwargs['save']
         self.writer     = SummaryWriter()
-        logging.basicConfig(filename=os.path.join(args.save_path, 'training.log'), level=logging.DEBUG)
+        logging.basicConfig(filename=os.path.join(self.save_path, 'training.log'), level=logging.DEBUG)
         self.criterion = torch.nn.CrossEntropyLoss().to(self.args.device)
 
     def info_nce_loss(self, features):
@@ -57,7 +58,7 @@ class SimCLR(object):
         scaler = GradScaler(enabled=self.args.fp16_precision)
 
         # save config file
-        save_config_file(self.args.save_path, self.args)
+        save_config_file(self.save_path, self.args)
 
         n_iter = 0
         logging.info(f"Start SimCLR training for {self.args.epochs} epochs.")

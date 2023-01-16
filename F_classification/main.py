@@ -42,8 +42,9 @@ parser.add_argument('--data', type=str, default='dataset_0', help="Save folder")
 parser.add_argument('--batch_size', type=int, default=256, help="batch Size")          
 parser.add_argument('--epochs', type=int, default=10, help="Epochs")          
 parser.add_argument('--workers', type=int, default=0, help="workers")          
+parser.add_argument('--out_dim', default=128, type=int, help='feature dimension (default: 128)')
 parser.add_argument('--show', type=bool, default=False, help="dataset show or not")          
-parser.add_argument('--backbone', type=str, default='Resnet18', help="backbone model")    
+parser.add_argument('--backbone', type=str, default='resnet18', help="backbone model")    
 parser.add_argument('--gpu-index', default=0, type=int, help='Gpu index.')
 parser.add_argument('--lr', '--learning-rate', default=0.0003, type=float, metavar='LR', help='initial learning rate', dest='lr')
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)', dest='weight_decay')
@@ -209,7 +210,7 @@ def main():
     experiment      = check_exp(args)
 
     args.device     = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    args.save_path  = os.path.join(args.save, experiment)
+    save_path  = os.path.join(args.save, experiment)
 
     # Pre-train model Fine tuning
     '''
@@ -242,15 +243,14 @@ def main():
                             train_dataset, batch_size=args.batch_size, shuffle=True,
                             num_workers=args.workers, pin_memory=True, drop_last=True)
 
-    model       = ResNetSimCLR(base_model=args.arch, out_dim=args.out_dim)
+    model       = ResNetSimCLR(base_model=args.backbone, out_dim=args.out_dim)
     optimizer   = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay)
     scheduler   = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader), eta_min=0, last_epoch=-1)
-    
+
     #  It’s a no-op if the 'gpu_index' argument is a negative integer or None.
     with torch.cuda.device(args.gpu_index):
-        simclr = SimCLR(model=model, optimizer=optimizer, scheduler=scheduler, args=args)
+        simclr = SimCLR(model=model, optimizer=optimizer, scheduler=scheduler, args=args, save=save_path)
         simclr.train(train_loader)
-
     return 
 
 
