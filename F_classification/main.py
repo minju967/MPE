@@ -41,17 +41,18 @@ parser.add_argument('--save', type=str, default='D:\\VS_CODE\\Paper\\Result', he
 parser.add_argument('--data', type=str, default='dataset_0', help="Save folder")     
 parser.add_argument('--batch_size', type=int, default=256, help="batch Size")          
 parser.add_argument('--epochs', type=int, default=10, help="Epochs")          
-parser.add_argument('--workers', type=int, default=0, help="workers")          
+parser.add_argument('--workers', type=int, default=8, help="workers")          
 parser.add_argument('--out_dim', default=128, type=int, help='feature dimension (default: 128)')
 parser.add_argument('--show', type=bool, default=False, help="dataset show or not")          
 parser.add_argument('--backbone', type=str, default='resnet18', help="backbone model")    
 parser.add_argument('--gpu-index', default=0, type=int, help='Gpu index.')
+parser.add_argument('--n_views', default=2, type=int, help='생성 view 갯수')
 parser.add_argument('--lr', '--learning-rate', default=0.0003, type=float, metavar='LR', help='initial learning rate', dest='lr')
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)', dest='weight_decay')
 parser.add_argument('--fp16-precision', action='store_true', help='Whether or not to use 16-bit precision GPU training.')
 parser.add_argument('--disable-cuda', action='store_true', help='Disable CUDA')
 parser.add_argument('--log-every-n-steps', default=10, type=int, help='Log every n steps')
-
+parser.add_argument('--temperature', default=0.07, type=float, help='softmax temperature (default: 0.07)')
 class cls_Trainer():
     def __init__(self, model, train_dataset, test_data, args, device, save) -> None:
         super().__init__()
@@ -209,7 +210,8 @@ def main():
     args            = parser.parse_args()
     experiment      = check_exp(args)
 
-    args.device     = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device     = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(device)
     save_path  = os.path.join(args.save, experiment)
 
     # Pre-train model Fine tuning
@@ -249,7 +251,7 @@ def main():
 
     #  It’s a no-op if the 'gpu_index' argument is a negative integer or None.
     with torch.cuda.device(args.gpu_index):
-        simclr = SimCLR(model=model, optimizer=optimizer, scheduler=scheduler, args=args, save=save_path)
+        simclr = SimCLR(model=model, optimizer=optimizer, scheduler=scheduler, args=args, save=save_path, device=device)
         simclr.train(train_loader)
     return 
 

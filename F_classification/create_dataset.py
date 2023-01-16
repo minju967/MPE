@@ -105,15 +105,16 @@ class ContrastiveLearningDataset:
         gaussian_blur     = GaussianBlur(kernel_size=kernel_size)
         rnd_gaussian_blur = RandomApply([gaussian_blur], p=0.5)
 
-        crop              = Resize((224, 224))
+        resize            = Resize((224, 224))
         to_tensor         = ToTensor()
+
         image_transform   = Compose([to_tensor,
                                     rnd_rotation,
-                                    rnd_flip,
-                                    rnd_color_jitter,
-                                    rnd_gray,
-                                    rnd_gaussian_blur,
-                                    crop,
+                                    # rnd_flip,
+                                    # rnd_color_jitter,
+                                    # rnd_gray,
+                                    # rnd_gaussian_blur,
+                                    resize
                                 ])
         return image_transform
 
