@@ -19,7 +19,7 @@ class finetuning_Model(nn.Module):
             self.model = resnet50(pretrained=True)
             self.classifier = nn.Linear(1000, 6)
         elif model_name == 'EfficientNet':
-            self.model = EfficientNet.from_pretrained('efficientnet-b3', in_channels=3)
+            self.model = EfficientNet.from_pretrained('efficientnet-b0', in_channels=3)
             self.classifier = nn.Linear(1000, 6)
 
     def forward(self, x):
@@ -33,5 +33,5 @@ class finetuning_Model(nn.Module):
         elif self.model_name == 'EfficientNet':
             x = F.relu(self.model(x))
             y = self.classifier(x)
-
         return y
+

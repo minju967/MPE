@@ -6,3 +6,6 @@
 *.log
 *.pyc
 *.ipynb
+*.tar
+events.out.tfevents.*
+run.py

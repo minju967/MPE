@@ -1,58 +1,26 @@
 import os
-import cv2
-import csv
 import torch
-import torch.nn
-import glob
-import random
+import torch.nn          as nn
 import logging
 import argparse
-import numpy             as np
 import pandas            as pd
 import torch.optim       as optim
 import matplotlib.pyplot as plt
 
-from time   import time
-from PIL    import Image
-from typing import Tuple
-from torch  import nn, Tensor
 
-from torchsummary           import summary
-from torchvision            import transforms
+from time                   import time
 from torch.nn               import functional as F
-from IPython.display        import display
-from logging.config         import dictConfig
-from efficientnet_pytorch   import EfficientNet
 from torch.utils.data       import Dataset, DataLoader
-from torchvision.models     import resnet50, resnet18, resnet34
 
 from Representation.simclr  import SimCLR
 from Representation.models  import ResNetSimCLR
 from Fine_tuning.models     import finetuning_Model
 from create_dataset         import ContrastiveLearningViewGenerator
 from create_dataset         import fine_tuning_Dataset, ContrastiveLearningDataset
-from create_dataset         import ContrastiveLearningDataset as contrastive_dataset
 
 # logger = logging.getLogger()
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--Root', type=str, default='D:\\VS_CODE\\Paper\\Datafolder', help="folder_name")                   
-parser.add_argument('--save', type=str, default='D:\\VS_CODE\\Paper\\Result', help='실험 결과 저장 폴더')   
-parser.add_argument('--data', type=str, default='dataset_0', help="Save folder")     
-parser.add_argument('--batch_size', type=int, default=256, help="batch Size")          
-parser.add_argument('--epochs', type=int, default=10, help="Epochs")          
-parser.add_argument('--workers', type=int, default=8, help="workers")          
-parser.add_argument('--out_dim', default=128, type=int, help='feature dimension (default: 128)')
-parser.add_argument('--show', type=bool, default=False, help="dataset show or not")          
-parser.add_argument('--backbone', type=str, default='resnet18', help="backbone model")    
-parser.add_argument('--gpu-index', default=0, type=int, help='Gpu index.')
-parser.add_argument('--n_views', default=2, type=int, help='생성 view 갯수')
-parser.add_argument('--lr', '--learning-rate', default=0.0003, type=float, metavar='LR', help='initial learning rate', dest='lr')
-parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)', dest='weight_decay')
-parser.add_argument('--fp16-precision', action='store_true', help='Whether or not to use 16-bit precision GPU training.')
-parser.add_argument('--disable-cuda', action='store_true', help='Disable CUDA')
-parser.add_argument('--log-every-n-steps', default=10, type=int, help='Log every n steps')
-parser.add_argument('--temperature', default=0.07, type=float, help='softmax temperature (default: 0.07)')
+
 class cls_Trainer():
     def __init__(self, model, train_dataset, test_data, args, device, save) -> None:
         super().__init__()
@@ -64,28 +32,9 @@ class cls_Trainer():
         self.optimizer = optim.Adam(model.parameters(), lr=1e-3)
         self.criterion = nn.MultiLabelSoftMarginLoss()
         self.save_model_path = save
-        self.test_df = pd.DataFrame(index=range(0,0), columns=['Idx', 'Name', 'A', 'HSM', 'C', 'Cut', 'Wire', 'None', 'Path'])
-
-        # dictConfig({
-        # 'version': 1,
-        # 'formatters': {
-        #     'default': {
-        #         'format':'[%(asctime)s] %(message)s'
-        #     }
-        # },
-        # 'handlers': {
-        #     'file': {
-        #         'level': 'INFO',
-        #         'class': 'logging.FileHandler',
-        #         'filename': os.path.join(save, 'debug.log'),
-        #         'formatter': 'default',
-        #     },
-        # },
-        # 'root': {
-        #     'level': 'DEBUG',
-        #     'handlers': ['file']
-        # }
-        # })  
+        self.test_df     = pd.DataFrame(index=range(0,0), columns=['Idx', 'Name', 'A', 'HSM', 'C', 'Cut', 'Wire', 'None', 'Path'])
+        self.train_frame  = pd.DataFrame(index=range(0,0), columns=['Epoch', 'Accuracy'])
+        self.test_frame   = pd.DataFrame(index=range(0,0), columns=['Epoch', 'Accuracy'])
 
     def train(self, epochs):
         max_acc = 0
@@ -96,7 +45,8 @@ class cls_Trainer():
             print(f'Epoch:{epoch}__Start')
 
             self.model.train()
-            
+            train_acc = 0
+            train_loss = 0
             for i, (images, targets, _ ) in enumerate(self.train_data):
                 self.optimizer.zero_grad()
                 images = images.to(self.device)
@@ -109,6 +59,9 @@ class cls_Trainer():
         
                 outputs = outputs > 0.5
                 acc = (outputs == targets).float().mean()
+                train_acc += acc.item()
+                train_loss += loss.item()
+
                 logging.info(f'[Train][{i}|{len(self.train_data)}] Loss:{loss.item():.5f} Acc:{acc.item():.5f}')
 
                 if (i+1) % 5 == 0:
@@ -120,12 +73,22 @@ class cls_Trainer():
             s = Learning_time % 60
             print(f'\nLearning Time: {int(m)}min. {int(s)}sec.')
 
+            train_acc = train_acc/len(self.train_data)
+            train_loss = train_loss/len(self.train_data)
+
+            data = [epoch, f'{train_acc:.5f}']
+            df = pd.DataFrame(data=[data], columns=['Epoch', 'Accuracy'])
+            self.train_frame = pd.concat([self.train_frame, df], ignore_index=True)
+
             test_acc = self.test(epoch=epoch, args=self.args)
 
             if test_acc > max_acc:
                 torch.save(self.model.state_dict(), os.path.join(self.save_model_path, 'model_state_dict.pt'))   # 모델 객체의 state_dict 저장
                 self.test_df.to_csv(os.path.join(self.save_model_path, f'result_{epoch}.csv'))
                 max_acc = test_acc
+            
+            self.train_frame.to_csv(os.path.join(self.save_model_path, 'train.csv'))
+            self.test_frame.to_csv(os.path.join(self.save_model_path, 'test.csv'))
         return
 
     def test(self, epoch, args):
@@ -178,6 +141,10 @@ class cls_Trainer():
         logging.info(f'[Test][{epoch}] Acc:{epoch_test_acc:.5f}')
         print(f'Test_data Acc: {num_acc/total_test:.5f}\n')
         
+        data = [epoch, f'{epoch_test_acc:.5f}']
+        df = pd.DataFrame(data=[data], columns=['Epoch', 'Accuracy'])
+        self.test_frame = pd.concat([self.test_frame, df], ignore_index=True)
+
         return epoch_test_acc
 
 def check_exp(args):
@@ -199,62 +166,88 @@ def check_exp(args):
 def view_data(dataset, index):
     for i in range(1,6):       
         images = dataset[index]
-        view1, view2 = images
+        view1, view2 = images[0]['image'], images[1]['image']
         plt.subplot(5,2,2*i-1)
         plt.imshow(view1.permute(1,2,0))
         plt.subplot(5,2,2*i)
         plt.imshow(view2.permute(1,2,0))
+
     plt.show()
 
-def main():
-    args            = parser.parse_args()
+def main(args):
     experiment      = check_exp(args)
 
-    device     = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(device)
-    save_path  = os.path.join(args.save, experiment)
+    device          = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    save_path       = os.path.join(args.save, experiment)
+
+    # parameter & 실험 정보 저장
+    f = open(save_path+'\\Experiment_Information.txt','w')
+    f.write(f'Dataset   : {args.data}\n')
+    f.write(f'Batch_size: {args.batch_size}\n')
+    f.write(f'Epoch     : {args.epochs}\n')
+    f.write(f'Backbone  : {args.backbone}\n')
+    f.write(f'Experiment Explain : \n')
+    f.close()
 
     # Pre-train model Fine tuning
-    '''
-    train_dataset   = fine_tuning_Dataset(os.path.join(args.Root, args.data), phase='Train')
-    test_dataset    = fine_tuning_Dataset(os.path.join(args.Root, args.data), phase='Test')
+    if args.pre_train:
+        train_dataset   = fine_tuning_Dataset(os.path.join(args.Root, args.data), phase='Train')
+        test_dataset    = fine_tuning_Dataset(os.path.join(args.Root, args.data), phase='Test')
 
-    train_loader    = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=0, shuffle=True)
-    test_loader     = DataLoader(test_dataset, batch_size=args.batch_size, num_workers=0, shuffle=False)
+        train_loader    = DataLoader(train_dataset, batch_size=args.batch_size, num_workers=8, shuffle=True)
+        test_loader     = DataLoader(test_dataset,  batch_size=args.batch_size, num_workers=8, shuffle=False)
 
-    model           = finetuning_Model(model_name=args.backbone).to(device)
-    print(model)
-    Trainer         = cls_Trainer(model=model, train_dataset=train_loader, test_data=test_loader, args=args, device=device, save=save_path)
-    Trainer.train(args.epochs)
-    '''
-    
+        model           = finetuning_Model(model_name=args.backbone).to(device)
+        Trainer         = cls_Trainer(model=model, train_dataset=train_loader, test_data=test_loader, args=args, device=device, save=save_path)
+        Trainer.train(args.epochs)
+        
     # Representation learning 
-    # dataset: https://www.kaggle.com/code/aritrag/simclr
-    # Show dataset
-    output_shape     = [224,224]
-    kernel_size      = [21,21] # 10% of the output_shape
-    base_transforms  = contrastive_dataset.get_complete_transform(output_shape=output_shape, kernel_size=kernel_size, s=1.0)
-    custom_transform = ContrastiveLearningViewGenerator(base_transform=base_transforms, n_views=2)
-    train_dataset    = ContrastiveLearningDataset(os.path.join(args.Root, args.data), phase='Train', transform=custom_transform)
+    else:
+        # dataset: https://www.kaggle.com/code/aritrag/simclr
 
-    if args.show:
-        plt.figure(figsize=(10,20))
-        view_data(train_dataset, 2000)
+        # Show dataset
+        custom_transform = ContrastiveLearningViewGenerator(n_views=2)
+        train_dataset    = ContrastiveLearningDataset(os.path.join(args.Root, args.data), phase='Train', transform=custom_transform)
 
-    train_loader = torch.utils.data.DataLoader(
-                            train_dataset, batch_size=args.batch_size, shuffle=True,
-                            num_workers=args.workers, pin_memory=True, drop_last=True)
+        if args.show:
+            plt.figure(figsize=(10,20))
+            view_data(train_dataset, 1)
 
-    model       = ResNetSimCLR(base_model=args.backbone, out_dim=args.out_dim)
-    optimizer   = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay)
-    scheduler   = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader), eta_min=0, last_epoch=-1)
+        train_loader = torch.utils.data.DataLoader(
+                                train_dataset, batch_size=args.batch_size, shuffle=True,
+                                num_workers=args.workers, pin_memory=True, drop_last=True)
 
-    #  It’s a no-op if the 'gpu_index' argument is a negative integer or None.
-    with torch.cuda.device(args.gpu_index):
-        simclr = SimCLR(model=model, optimizer=optimizer, scheduler=scheduler, args=args, save=save_path, device=device)
-        simclr.train(train_loader)
+        model       = ResNetSimCLR(base_model=args.backbone, out_dim=args.out_dim)
+        optimizer   = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay)
+        scheduler   = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader), eta_min=0, last_epoch=-1)
+
+        #  It’s a no-op if the 'gpu_index' argument is a negative integer or None.
+        with torch.cuda.device(args.gpu_index):
+            simclr = SimCLR(model=model, optimizer=optimizer, scheduler=scheduler, args=args, save=save_path, device=device)
+            simclr.train(train_loader)
     return 
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--Root', type=str, default='D:\\VS_CODE\\Paper\\Datafolder', help="folder_name")                   
+    parser.add_argument('--save', type=str, default='D:\\VS_CODE\\Paper\\Result', help='실험 결과 저장 폴더')   
+    parser.add_argument('--pre_train', type=bool, default=True, help='True: Pre-train moedl, False: Fine-tuning model')   
+    parser.add_argument('--data', type=str, default='dataset_0', help="Save folder")     
+    parser.add_argument('--batch_size', type=int, default=256, help="batch Size")          
+    parser.add_argument('--epochs', type=int, default=1, help="Epochs")          
+    parser.add_argument('--workers', type=int, default=8, help="workers")          
+    parser.add_argument('--out_dim', default=128, type=int, help='feature dimension (default: 128)')
+    parser.add_argument('--show', type=bool, default=False, help="dataset show or not")          
+    parser.add_argument('--backbone', type=str, default='Resnet18', choices=['Resnet18, Resnet34, Resnet50, EfficientNet'], help="backbone model")    
+    parser.add_argument('--gpu-index', default=0, type=int, help='Gpu index.')
+    parser.add_argument('--n_views', default=2, type=int, help='생성 view 갯수')
+    parser.add_argument('--lr', '--learning-rate', default=0.0003, type=float, metavar='LR', help='initial learning rate', dest='lr')
+    parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)', dest='weight_decay')
+    parser.add_argument('--fp16-precision', action='store_true', help='Whether or not to use 16-bit precision GPU training.')
+    parser.add_argument('--disable-cuda', action='store_true', help='Disable CUDA')
+    parser.add_argument('--log-every-n-steps', default=10, type=int, help='Log every n steps')
+    parser.add_argument('--temperature', default=0.07, type=float, help='softmax temperature (default: 0.07)')
+
+    args = parser.parse_args()
+    main(args)

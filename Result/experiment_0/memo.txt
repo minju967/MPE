@@ -1,4 +1,0 @@
-resnet50
-dataset_0
-eooch = 10
-batchsize = 128
