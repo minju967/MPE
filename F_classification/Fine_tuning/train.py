@@ -35,9 +35,11 @@ class cls_Trainer():
             print(f'Epoch:{epoch}__Start')
 
             self.model.train()
-            train_acc = 0
+
             train_loss = 0
-            
+            Num_total_data = 0
+            Num_correct_data = 0
+
             for i, (images, targets, _ ) in enumerate(self.train_data):
                 self.optimizer.zero_grad()
                 images = images.to(self.device)
@@ -50,14 +52,24 @@ class cls_Trainer():
         
                 outputs = outputs > 0.5
                 acc = (outputs == targets).float().mean()
-                train_acc += acc.item()
                 train_loss += loss.item()
+                
+                results = torch.eq(targets, outputs)
+                for i in range(results.shape[0]):
+                    if sum(list(results[i].numpy())) == 6:
+                        Num_correct_data += 1
+                        Num_total_data += 1
+                    else:
+                        Num_total_data += 1
 
                 logging.info(f'[Train][{i}|{len(self.train_data)}] Loss:{loss.item():.5f} Acc:{acc.item():.5f}')
 
                 if (i+1) % 5 == 0:
                     print(f'[{i}/{len(self.train_data)}]: Loss:{loss.item():.5f}, Acc:{acc.item():.5f}')
-                
+            
+            epoch_acc = Num_correct_data/Num_total_data
+            logging.info(f'\n[Epoch:{epoch}] Accuary:{epoch_acc:.5f}')
+
             End_time = time()
             Learning_time = End_time - Start_time
             m = Learning_time // 60
@@ -86,7 +98,6 @@ class cls_Trainer():
         self.model.eval()
         batch_size = self.test_data.batch_size
         batch_index = 0
-        test_acc = 0.0  
         self.test_df = pd.DataFrame(index=range(0,0), columns=['Idx', 'Name', 'A', 'HSM', 'C', 'Cut', 'Wire', 'None', 'Path'])
 
         total_test = 0
@@ -101,7 +112,6 @@ class cls_Trainer():
 
             outputs = outputs > 0.5
             acc = (outputs == targets).float().mean()
-            x4 += acc
             outputs = outputs.long().squeeze(0).detach().cpu().numpy()
             
             batch_index = i * batch_size
