@@ -1,4 +1,5 @@
 from time import time
+from torch.utils.tensorboard import SummaryWriter
 
 import os
 import copy
@@ -10,6 +11,8 @@ import pandas            as pd
 import torch.optim       as optim
 import matplotlib.pyplot as plt
 
+torch.manual_seed(0)
+logger = logging.getLogger(__name__)
 
 class cls_Trainer():
     def __init__(self, model, train_dataset, test_data, args, device, save) -> None:
@@ -26,13 +29,15 @@ class cls_Trainer():
         self.train_frame  = pd.DataFrame(index=range(0,0), columns=['Epoch', 'Accuracy'])
         self.test_frame   = pd.DataFrame(index=range(0,0), columns=['Epoch', 'Accuracy'])
 
+        self.writer     = SummaryWriter(self.save_model_path)
+
     def train(self, epochs):
         max_acc = 0
 
         for epoch in range(epochs):
             Start_time = time()
             print('='*30)
-            print(f'Epoch:{epoch}__Start')
+            print(f'{epoch}Epoch Train Start')
 
             self.model.train()
 
@@ -69,6 +74,7 @@ class cls_Trainer():
             
             epoch_acc = Num_correct_data/Num_total_data
             logging.info(f'\n[Epoch:{epoch}] Accuary:{epoch_acc:.5f}')
+            print(f'\n[Epoch:{epoch}] Accuary:{epoch_acc:.5f}')
 
             End_time = time()
             Learning_time = End_time - Start_time
@@ -76,10 +82,9 @@ class cls_Trainer():
             s = Learning_time % 60
             print(f'\nLearning Time: {int(m)}min. {int(s)}sec.')
 
-            train_acc = train_acc/len(self.train_data)
-            train_loss = train_loss/len(self.train_data)
+            # train_loss = train_loss/len(self.train_data)
 
-            data = [epoch, f'{train_acc:.5f}']
+            data = [epoch, f'{epoch_acc:.5f}']
             df = pd.DataFrame(data=[data], columns=['Epoch', 'Accuracy'])
             self.train_frame = pd.concat([self.train_frame, df], ignore_index=True)
 

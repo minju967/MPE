@@ -3,8 +3,8 @@ import torch.nn as nn
 
 from torch.nn import functional as F
 from efficientnet_pytorch import EfficientNet
-from torchvision.models import resnet50, resnet18, resnet34
-from torchvision.models import ResNet50_Weights
+from torchvision.models import resnet18, resnet34, resnet50
+from torchvision.models import ResNet18_Weights, ResNet34_Weights, ResNet50_Weights
 
 class finetuning_Model(nn.Module):
     def __init__(self, model_name, model_PT) -> None:
@@ -13,13 +13,15 @@ class finetuning_Model(nn.Module):
         self.model_name = model_name
 
         if model_name == 'Resnet18':
-            self.model = resnet18(pretrained=True)
+            self.model = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
         elif model_name == 'Resnet34':
-            self.model = resnet34(pretrained=True)
+            self.model = resnet34(weights=ResNet34_Weights.IMAGENET1K_V1)
         elif model_name == 'Resnet50':
             self.model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
-        elif model_name == 'EfficientNet':
+        elif model_name == 'EfficientNetB0':
             self.model = EfficientNet.from_pretrained('efficientnet-b0', in_channels=3)
+        elif model_name == 'EfficientNetB1':
+            self.model = EfficientNet.from_pretrained('efficientnet-b1', in_channels=3)
         
         if model_name == 'Resnet18' or model_name == 'Resnet34':
             self.model.fc = nn.Linear(512, 6)
@@ -41,7 +43,7 @@ class finetuning_Model(nn.Module):
                 del state_dict[k]
 
             log = self.model.load_state_dict(state_dict, strict=False)
-            if model_name != 'EfficientNet':
+            if 'EfficientNet' not in model_name:
                 assert log.missing_keys == ['fc.weight', 'fc.bias']
             else:
                 assert log.missing_keys == ['_fc.weight', '_fc.bias']
@@ -60,7 +62,8 @@ class finetuning_Model(nn.Module):
         elif self.model_name == 'Resnet50':
             x = self.model(x)
             y = self.classifier(x)
-        elif self.model_name == 'EfficientNet':
+        else:
+            # EfficientNetB0, EfficientNetB1
             x = F.relu(self.model(x))
             y = self.classifier(x)
         return y

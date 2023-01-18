@@ -34,7 +34,7 @@ class fine_tuning_Dataset(Dataset):
                              [0.229, 0.224, 0.225])
                             ])
 
-        self.image_list = [file for file in os.listdir(self.dir) if file.endswith('.png')]
+        self.image_list = [file for file in os.listdir(self.dir) if file.endswith('.png')][:256]
 
         self.label_df = pd.read_csv(self.dir+'\\label.csv')
 

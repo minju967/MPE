@@ -53,10 +53,13 @@ def main(args):
     f.write(f'Backbone  : {args.backbone}\n')
     f.write(f'Pretrain  : {args.pretrain}\n')
     f.write(f'Experiment Explain : \n')
-    f.close()
 
     # Pre-train model Fine tuning
     if args.pretrain == 0 or args.pretrain == 2:
+        stage = {0:"IMAGENET Pre-trained Model", 2:"SimCLR Pre-trained Model"}
+        str = f'__Start Model Fine-Tuning: State: {stage[args.pretrain]}__\n\n'
+        f.write(str)
+        print(str)
         train_dataset   = fine_tuning_Dataset(os.path.join(args.Root, args.data), phase='Train')
         test_dataset    = fine_tuning_Dataset(os.path.join(args.Root, args.data), phase='Test')
 
@@ -70,11 +73,16 @@ def main(args):
             pt_path         = os.path.join(args.save, args.pt_path, 'checkpoint_best.pth.tar')
             model           = finetuning_Model(model_name=args.backbone, model_PT=pt_path).to(device)
 
+        f.close()
         Trainer         = cls_Trainer(model=model, train_dataset=train_loader, test_data=test_loader, args=args, device=device, save=save_path)
         Trainer.train(args.epochs)
         
     # Representation learning 
     elif args.pretrain == 1:
+        str = f'__Start Model Pre-train: State: Representation Learning__\n\n'
+        f.write(str)
+        print(str)
+
         # dataset: https://www.kaggle.com/code/aritrag/simclr
 
         # Show dataset
@@ -87,8 +95,8 @@ def main(args):
 
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True,
                                                    num_workers=args.workers, pin_memory=True, drop_last=True)
-
-        model       = ResNetSimCLR(base_model=args.backbone, out_dim=args.out_dim)
+        f.close()
+        model       = ResNetSimCLR(base_model=args.backbone, out_dim=args.out_dim, pretrain=args.pre_RL)
         optimizer   = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay)
         scheduler   = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_loader), eta_min=0, last_epoch=-1)
 
@@ -96,6 +104,8 @@ def main(args):
         with torch.cuda.device(args.gpu_index):
             simclr = SimCLR(model=model, optimizer=optimizer, scheduler=scheduler, args=args, save=save_path, device=device)
             simclr.train(train_loader)
+    
+    f.close()
     return 
 
 
@@ -105,13 +115,14 @@ if __name__ == '__main__':
     parser.add_argument('--save', type=str, default='D:\\VS_CODE\\Paper\\Result', help='실험 결과 저장 폴더')   
     parser.add_argument('--pt_path', type=str, default=None, help='model_state_dict_file')   
     parser.add_argument('--pretrain', type=int, default=1, help='0: Fine-tuning model, 1: Pre-train moedl, 2: Pre-train+fine_tuning')   
+    parser.add_argument('--pre_RL', type=bool, default=False, help="pretrained Representation learing or Not")     
     parser.add_argument('--data', type=str, default='dataset_0', help="Save folder")     
     parser.add_argument('--batch_size', type=int, default=256, help="batch Size")          
     parser.add_argument('--epochs', type=int, default=100, help="Epochs")          
     parser.add_argument('--workers', type=int, default=8, help="workers")          
     parser.add_argument('--out_dim', default=128, type=int, help='feature dimension (default: 128)')
     parser.add_argument('--show', type=bool, default=False, help="dataset show or not")          
-    parser.add_argument('--backbone', type=str, default='Resnet18', choices=['Resnet18', 'Resnet34', 'Resnet50', 'EfficientNet'], help="backbone model")    
+    parser.add_argument('--backbone', type=str, default='Resnet18', choices=['Resnet18', 'Resnet34', 'Resnet50', 'EfficientNetB0', 'EfficientNetB1'], help="backbone model")    
     parser.add_argument('--gpu-index', default=0, type=int, help='Gpu index.')
     parser.add_argument('--n_views', default=2, type=int, help='생성 view 갯수')
     parser.add_argument('--lr', '--learning-rate', default=0.0003, type=float, metavar='LR', help='initial learning rate', dest='lr')

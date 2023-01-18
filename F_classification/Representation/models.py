@@ -3,15 +3,24 @@ import torchvision.models as models
 
 from efficientnet_pytorch import EfficientNet
 from exceptions.exceptions import InvalidBackboneError
+from torchvision.models import ResNet18_Weights, ResNet34_Weights, ResNet50_Weights
 
 class ResNetSimCLR(nn.Module):
 
-    def __init__(self, base_model, out_dim):
+    def __init__(self, base_model, out_dim, pretrain):
         super(ResNetSimCLR, self).__init__()
-        self.resnet_dict = {"Resnet18": models.resnet18(pretrained=False, num_classes=out_dim),
-                            "Resnet34": models.resnet34(pretrained=False, num_classes=out_dim),
-                            "Resnet50": models.resnet50(pretrained=False, num_classes=out_dim),
-                            "EfficientNet":EfficientNet.from_name('efficientnet-b0')}
+        if pretrain:
+            self.resnet_dict = {"Resnet18": models.resnet18(weights=ResNet18_Weights.IMAGENET1K_V1, num_classes=out_dim),
+                                "Resnet34": models.resnet34(weights=ResNet34_Weights.IMAGENET1K_V1, num_classes=out_dim),
+                                "Resnet50": models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1, num_classes=out_dim),
+                                "EfficientNeB0":EfficientNet.from_pretrained('efficientnet-b0'),
+                                "EfficientNeB1":EfficientNet.from_pretrained('efficientnet-b1')}
+        else:
+            self.resnet_dict = {"Resnet18": models.resnet18(pretrained=False, num_classes=out_dim),
+                                "Resnet34": models.resnet34(pretrained=False, num_classes=out_dim),
+                                "Resnet50": models.resnet50(pretrained=False, num_classes=out_dim),
+                                "EfficientNetB0":EfficientNet.from_name('efficientnet-b0'),
+                                "EfficientNetB1":EfficientNet.from_name('efficientnet-b1')}
 
         self.backbone = self._get_basemodel(base_model)
 
