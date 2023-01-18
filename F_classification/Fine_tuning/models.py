@@ -4,6 +4,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 from efficientnet_pytorch import EfficientNet
 from torchvision.models import resnet50, resnet18, resnet34
+from torchvision.models import ResNet50_Weights
 
 class finetuning_Model(nn.Module):
     def __init__(self, model_name, model_PT) -> None:
@@ -16,7 +17,7 @@ class finetuning_Model(nn.Module):
         elif model_name == 'Resnet34':
             self.model = resnet34(pretrained=True)
         elif model_name == 'Resnet50':
-            self.model = resnet50(pretrained=True)
+            self.model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
         elif model_name == 'EfficientNet':
             self.model = EfficientNet.from_pretrained('efficientnet-b0', in_channels=3)
         

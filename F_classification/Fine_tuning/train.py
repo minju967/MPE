@@ -37,6 +37,7 @@ class cls_Trainer():
             self.model.train()
             train_acc = 0
             train_loss = 0
+            
             for i, (images, targets, _ ) in enumerate(self.train_data):
                 self.optimizer.zero_grad()
                 images = images.to(self.device)
@@ -100,7 +101,7 @@ class cls_Trainer():
 
             outputs = outputs > 0.5
             acc = (outputs == targets).float().mean()
-            test_acc += acc
+            x4 += acc
             outputs = outputs.long().squeeze(0).detach().cpu().numpy()
             
             batch_index = i * batch_size
