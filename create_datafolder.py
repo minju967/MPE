@@ -7,7 +7,6 @@ import glob
 import os
 
 
-
 def Separate_image(opt):
     label_df = pd.read_csv(opt.csv)
 

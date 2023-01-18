@@ -14,11 +14,14 @@ class ResNetSimCLR(nn.Module):
                             "EfficientNet":EfficientNet.from_name('efficientnet-b0')}
 
         self.backbone = self._get_basemodel(base_model)
-        dim_mlp = self.backbone.fc.in_features
 
-        # add mlp projection head
-        self.backbone.fc = nn.Sequential(nn.Linear(dim_mlp, dim_mlp), nn.ReLU(), self.backbone.fc)
-
+        if 'Resnet' in base_model:
+            dim_mlp = self.backbone.fc.in_features
+            self.backbone.fc = nn.Sequential(nn.Linear(dim_mlp, dim_mlp), nn.ReLU(), self.backbone.fc)
+        else:
+            dim_mlp = self.backbone._fc.in_features
+            self.backbone._fc = nn.Sequential(nn.Linear(dim_mlp, dim_mlp), nn.ReLU(), self.backbone._fc)
+        
     def _get_basemodel(self, model_name):
         try:
             model = self.resnet_dict[model_name]

@@ -3,6 +3,7 @@ import os
 import sys
 import torch
 import pandas as pd
+import copy
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from torch.cuda.amp import GradScaler, autocast
@@ -145,7 +146,7 @@ class SimCLR(object):
                 save_checkpoint({
                     'epoch': self.args.epochs,
                     'arch': self.args.backbone,
-                    'state_dict': self.model.state_dict(),
+                    'state_dict': copy.deepcopy(self.model.state_dict()),
                     'optimizer': self.optimizer.state_dict(),
                 }, is_best=False, filename=os.path.join(self.save_path, checkpoint_name))
                 logging.info(f"Model checkpoint and metadata has been saved at {self.save_path}.")
