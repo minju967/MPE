@@ -1,0 +1,22 @@
+
+__Representation Learning__
+
+# Early stopping 적용 X
+
+성능 비교
+# pre-train backbone 사용할 경우:
+    pre-train model 파일
+    # Resnet18
+    # Resnet18
+    # Resnet50
+    # EfficientNetB0
+    # EfficientNetB1
+# initialize backbone 사용할 경우:
+
+모델 비교
+# SimCLR
+# BYOL
+
+학습
+# Epoch: 100 epochs
+# Batch_size: 128(Resnet50, EfficientNetB0, EfficientNetB1) or 256(Resnet18, Resnet34)

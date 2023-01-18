@@ -10,7 +10,7 @@ from torch.cuda.amp import GradScaler, autocast
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from utils import save_config_file, accuracy, save_checkpoint
-
+from F_classification.pytorchtools import EarlyStopping
 torch.manual_seed(0)
 logger = logging.getLogger(__name__)
 
@@ -22,22 +22,21 @@ class SimCLR(object):
         self.optimizer  = kwargs['optimizer']
         self.scheduler  = kwargs['scheduler']
         self.save_path  = kwargs['save']
-        self.writer     = SummaryWriter(self.save_path)
+
         self.data_frame = pd.DataFrame(index=range(0,0), columns=['Epoch', 'Iteration', 'iter_Loss', 'Top1_acc', 'Top5_acc', 'Epoch_Loss', 'Epoch_acc'])
+        self.criterion  = torch.nn.CrossEntropyLoss().to(self.device)
 
+        self.writer     = SummaryWriter(self.save_path)
+        self.early_stopping = EarlyStopping(patience = 3, verbose=True)
         logging.basicConfig(filename=os.path.join(self.save_path, 'training.log'), level=logging.DEBUG)
-        logging.getLogger('matplotlib.font_manager').disabled = True
-
-        self.criterion = torch.nn.CrossEntropyLoss().to(self.device)
+        logging.getLogger('matplotlib.font_manager').disabled = True        
 
     def info_nce_loss(self, features):
-
         labels = torch.cat([torch.arange(self.args.batch_size) for i in range(self.args.n_views)], dim=0)
         labels = (labels.unsqueeze(0) == labels.unsqueeze(1)).float()
         labels = labels.to(self.device)
 
         features = F.normalize(features, dim=1)
-
         similarity_matrix = torch.matmul(features, features.T)
 
         # discard the main diagonal from both: labels and similarities matrix
@@ -73,7 +72,6 @@ class SimCLR(object):
         plt.savefig(f'{self.save_path}\\figure.png')
 
     def train(self, train_loader):
-
         scaler = GradScaler(enabled=self.args.fp16_precision)
 
         # save config file
@@ -87,13 +85,12 @@ class SimCLR(object):
 
         Train_loss_list = []
         Train_acc_list  = []
-        Test_loss_list  = []
-        Test_acc_list   = []
 
         for epoch_counter in range(self.args.epochs):
             print(f'__Epoch {epoch_counter} Train Start__')
-            acc  = 0
-            train_loss = 0
+            acc         = 0
+            train_loss  = 0
+            
             for images in tqdm(train_loader):  
                 images = torch.cat([images[0]['image'], images[1]['image']], dim=0)
                 images = images.float().to(self.device)
@@ -104,9 +101,7 @@ class SimCLR(object):
                     loss = self.criterion(logits, labels)
 
                 self.optimizer.zero_grad()
-
                 scaler.scale(loss).backward()
-
                 scaler.step(self.optimizer)
                 scaler.update()
 
@@ -156,8 +151,9 @@ class SimCLR(object):
                 self.scheduler.step()
             logging.debug(f"Epoch: {epoch_counter}\tLoss: {loss}\tTop1 accuracy: {top1[0]}\t Epoch accuracy:{acc:.5f}")
 
+        
+        
         self.data_frame.to_csv(os.path.join(self.save_path, 'experiment.csv'))
-
         self.show_plot(Train_acc_list, Train_loss_list)
 
         logging.info("Training has finished.")

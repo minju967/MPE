@@ -1,5 +1,6 @@
 from time import time
 from torch.utils.tensorboard import SummaryWriter
+from F_classification.pytorchtools import EarlyStopping
 
 import os
 import copy
@@ -10,7 +11,6 @@ import argparse
 import pandas            as pd
 import torch.optim       as optim
 import matplotlib.pyplot as plt
-
 torch.manual_seed(0)
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,9 @@ class cls_Trainer():
         self.test_frame   = pd.DataFrame(index=range(0,0), columns=['Epoch', 'Accuracy'])
 
         self.writer     = SummaryWriter(self.save_model_path)
+        self.early_stopping = EarlyStopping(patience = 3, verbose=True)
+        logging.basicConfig(filename=os.path.join(self.save_path, 'training.log'), level=logging.DEBUG)
+        logging.getLogger('matplotlib.font_manager').disabled = True
 
     def train(self, epochs):
         max_acc = 0
@@ -88,16 +91,22 @@ class cls_Trainer():
             df = pd.DataFrame(data=[data], columns=['Epoch', 'Accuracy'])
             self.train_frame = pd.concat([self.train_frame, df], ignore_index=True)
 
-            test_acc = self.test(epoch=epoch, args=self.args)
-
-            if test_acc > max_acc:
-                torch.save(copy.deepcopy(self.model.state_dict()), os.path.join(self.save_model_path, 'model_state_dict.pt'))   # 모델 객체의 state_dict 저장
-                self.test_df.to_csv(os.path.join(self.save_model_path, f'result_{epoch}.csv'))
-                max_acc = test_acc
+            test_acc, test_loss = self.test(epoch=epoch, args=self.args)
+            self.early_stopping(test_loss, self.model)
             
-            self.train_frame.to_csv(os.path.join(self.save_model_path, 'train.csv'))
-            self.test_frame.to_csv(os.path.join(self.save_model_path, 'test.csv'))
-        return
+            if self.early_stopping.early_stop:
+                self.train_frame.to_csv(os.path.join(self.save_model_path, 'train.csv'))
+                self.test_frame.to_csv(os.path.join(self.save_model_path, 'test.csv'))
+                return
+            else:
+                if test_acc > max_acc:
+                    torch.save(copy.deepcopy(self.model.state_dict()), os.path.join(self.save_model_path, 'model_state_dict.pt'))   # 모델 객체의 state_dict 저장
+                    self.test_df.to_csv(os.path.join(self.save_model_path, f'result_{epoch}.csv'))
+                    max_acc = test_acc
+                
+                self.train_frame.to_csv(os.path.join(self.save_model_path, 'train.csv'))
+                self.test_frame.to_csv(os.path.join(self.save_model_path, 'test.csv'))
+                return
 
     def test(self, epoch, args):
         self.model.eval()
@@ -105,18 +114,19 @@ class cls_Trainer():
         batch_index = 0
         self.test_df = pd.DataFrame(index=range(0,0), columns=['Idx', 'Name', 'A', 'HSM', 'C', 'Cut', 'Wire', 'None', 'Path'])
 
-        total_test = 0
-        num_acc = 0
+        total_test  = 0
+        num_acc     = 0
+        test_loss   = 0
 
         for i, (images, targets, name) in enumerate(self.test_data):
             images = images.to(self.device)
             targets = targets.to(self.device)
-            outputs = self.model(images)
 
-            total_test += images.shape[0]
+            outputs = self.model(images)
+            loss = self.criterion(outputs, targets)
+            test_loss += loss.item()
 
             outputs = outputs > 0.5
-            acc = (outputs == targets).float().mean()
             outputs = outputs.long().squeeze(0).detach().cpu().numpy()
             
             batch_index = i * batch_size
@@ -141,6 +151,7 @@ class cls_Trainer():
             df = pd.DataFrame({'Idx':idx, 'Name':name, 'A':A, 'HSM':HSM, 'C':C, 'Cut':Cut, 'Wire':Wire, 'None':none, 'Path':path, 'Result':results})
             self.test_df = pd.concat([self.test_df, df], ignore_index=True)
 
+            total_test += images.shape[0]
             num_acc += sum(list(map(int, results)))
 
         epoch_test_acc = num_acc/total_test
@@ -151,4 +162,4 @@ class cls_Trainer():
         df = pd.DataFrame(data=[data], columns=['Epoch', 'Accuracy'])
         self.test_frame = pd.concat([self.test_frame, df], ignore_index=True)
 
-        return epoch_test_acc
+        return epoch_test_acc, test_loss

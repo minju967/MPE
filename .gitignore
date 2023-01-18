@@ -9,3 +9,5 @@
 *.tar
 events.out.tfevents.*
 run.py
+
+!record.txt
