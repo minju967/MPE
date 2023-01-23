@@ -59,44 +59,59 @@ def create_dataset(opt):
     random.seed(datetime.now().timestamp())
 
     save_df_path = create_datafolder(opt)
-    All_df = pd.read_csv(opt.csv)
-    train_df = pd.DataFrame(index=range(0,0), columns=['Idx', 'Name', 'A', 'HSM', 'C', 'Cut', 'Wire', 'None', 'Path', 'Labeled'])
-    test_df = pd.DataFrame(index=range(0,0), columns=['Idx', 'Name', 'A', 'HSM', 'C', 'Cut', 'Wire', 'None', 'Path', 'Labeled'])
+    All_df       = pd.read_csv(opt.csv)
+    train_df     = pd.DataFrame(index=range(0,0), columns=['Idx', 'Name', 'A', 'HSM', 'C', 'Cut', 'Wire', 'Path', 'Labeled'])
+    test_df      = pd.DataFrame(index=range(0,0), columns=['Idx', 'Name', 'A', 'HSM', 'C', 'Cut', 'Wire', 'Path', 'Labeled'])
 
     # class_list = os.listdir(opt.path)
-    class_list = ['A', 'HSM', 'C', 'Cut', 'Wire']
-    class_list.sort()
+    class_list = ['A', 'HSM', 'Wire', 'C', 'Cut']
+    # class_list.sort()
 
     train_data = []
     test_data  = []
 
+    train_data_path = []
+    test_data_path  = []
+
     for cls in class_list:
         cls_path = os.path.join(opt.path, cls)
-        num = len(glob.glob(cls_path+'\\*.png'))
-        num_of_test = int(num * 0.2)
-        idx_list = list(range(num))
+        cls_img_list = glob.glob(cls_path+'\\*.png')
+        random.shuffle(cls_img_list)        # 클래스 이미지 path 리스트
+        num = len(cls_img_list)             # 해당 클래스 전체 이미지 수
+        num_of_test = int(num * 0.2)        # test 이미지 수
+        idx_list = list(range(num))                 
          
-        # Test Image 선택
+        # Test Image 선택 --> Train_data에 해당 이미지가 있는지 확인
         print(f'\n{cls}_Test Image: {num_of_test}')
+
         for idx in range(num_of_test):
-            file_name = glob.glob(cls_path+'\\*.png')[idx].split('\\')[-1]
-            test_data.append(glob.glob(cls_path+'\\*.png')[idx])
-            idx_list.remove(idx)
-            test_df = pd.concat([test_df, All_df.loc[All_df.Name==file_name]], ignore_index=True, bool_only=True)
+            file_name = cls_img_list[idx].split('\\')[-1]
+            if file_name not in train_data:
+                test_data.append(file_name)
+                test_data_path.append(cls_img_list[idx])
+                idx_list.remove(idx)
+                test_df = pd.concat([test_df, All_df.loc[All_df.Name==file_name]], ignore_index=True)
+            else:
+                continue
         
-        # Train Image 선택
+        # Train Image 선택 --> Test_data에 해당 이미지가 있는지 확인
         print(f'{cls}_Train Image: {len(idx_list)}')
         for idx in idx_list:
-            file_name = glob.glob(cls_path+'\\*.png')[idx].split('\\')[-1]
-            train_data.append(glob.glob(cls_path+'\\*.png')[idx])
-            train_df = pd.concat([train_df, All_df.loc[All_df.Name==file_name]], ignore_index=True, bool_only=True)
+            file_name = cls_img_list[idx].split('\\')[-1]
+            if file_name not in test_data:
+                train_data.append(file_name)
+                train_data_path.append(cls_img_list[idx])
+                train_df = pd.concat([train_df, All_df.loc[All_df.Name==file_name]], ignore_index=True)
 
     # 중복제거
     train_data = list(set(train_data))
     test_data = list(set(test_data))
     
+    print(len(train_data))
+    print(len(test_data))
+    
     # dataset_{}\\Train\\*.png
-    for src in train_data:
+    for src in train_data_path:
         # src: image path
         file_name = src.split('\\')[-1]
         dst = os.path.join(save_df_path, 'Train', file_name)
@@ -104,7 +119,7 @@ def create_dataset(opt):
     train_df.to_csv(os.path.join(save_df_path, 'Train', 'label.csv'))
 
     # dataset_{}\\Test\\*.png
-    for src in test_data:
+    for src in test_data_path:
         # src: image path
         file_name = src.split('\\')[-1]
         dst = os.path.join(save_df_path, 'Test', file_name)

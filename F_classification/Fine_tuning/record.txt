@@ -1,0 +1,16 @@
+
+__Pre-Trained Model Fine-Tuning__
+
+# Epoch: 10epochs
+# Early stopping 적용(patience 3)
+# Optimizer: optim.Adam(model.parameters(), lr=1e-3)
+# Loss function: nn.MultiLabelSoftMarginLoss()
+
+## Test Accuracy 계산 방법..
+# orginal source code: correct / test_data 수 * 6(class 수)
+# 1) All correct data(6개 클래스 정답을 모두 맞힌 경우) / test data 수
+# 2) 각 클래스별 정확도 + 평균 --> 연삭전극, 고속가공, 고속전극, 연삭, 와이어, None 에 대한 accuracy + 평균
+# 3) 전체 클래스에 대한 precision, recall, f1-score 
+# 4) 각 클래스에 대한 precision, recall, f1-score 
+
+

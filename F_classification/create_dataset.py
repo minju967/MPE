@@ -1,4 +1,6 @@
-from torch.utils.data import Dataset, DataLoader
+from albumentations.pytorch import transforms
+import albumentations
+from torch.utils.data import Dataset
 from torchvision import transforms as tf
 from typing import Tuple
 from torch import nn, Tensor
@@ -6,10 +8,8 @@ from PIL import Image
 
 import os
 import cv2
-import random
 import numpy as np
 import pandas as pd
-
 
 class fine_tuning_Dataset(Dataset):
     def __init__(self, dir, phase) -> None:
@@ -17,9 +17,9 @@ class fine_tuning_Dataset(Dataset):
         self.dir = os.path.join(dir, phase)
         if phase == 'Train':
             self.transforms = tf.Compose([
+                            tf.Resize((256,256)),
                             tf.RandomHorizontalFlip(p=0.5),
                             tf.RandomVerticalFlip(p=0.5),
-                            tf.Resize((256,256)),
                             tf.ToTensor(),
                             tf.Normalize
                             ([0.485, 0.456, 0.406],
@@ -34,8 +34,7 @@ class fine_tuning_Dataset(Dataset):
                              [0.229, 0.224, 0.225])
                             ])
 
-        self.image_list = [file for file in os.listdir(self.dir) if file.endswith('.png')][:256]
-
+        self.image_list = [file for file in os.listdir(self.dir) if file.endswith('.png')]
         self.label_df = pd.read_csv(self.dir+'\\label.csv')
 
     def __len__(self) -> int:
@@ -46,21 +45,13 @@ class fine_tuning_Dataset(Dataset):
         img_path = os.path.join(self.dir, image_name)        
 
         image = Image.open(img_path).convert('RGB')
-        target = self.label_df[self.label_df.Name==image_name].values.tolist()[0][3:9]
+        target = self.label_df[self.label_df.Name==image_name].values.tolist()[0][3:8]
 
         target = np.array(target).astype(np.float32)
         if self.transforms is not None:
             image = self.transforms(image)
             
         return image, target, image_name
-
-
-from data_aug.gaussian_blur import GaussianBlur
-from torchvision import transforms, datasets
-from data_aug.view_generator import ContrastiveLearningViewGenerator
-from exceptions.exceptions import InvalidDatasetSelection
-from albumentations.pytorch import transforms
-import albumentations
 
 
 class ContrastiveLearningViewGenerator(object):
@@ -106,4 +97,22 @@ class ContrastiveLearningDataset(Dataset):
 
         if self.transform:
             image = [self.transform(image=image) for i in range(2)]
+        return image
+
+class PyTorch_BYOL(Dataset):
+    def __init__(self, root_folder, phase, transform):
+        self.dir           = os.path.join(root_folder, phase)
+        self.image_list    = [file for file in os.listdir(self.dir) if file.endswith('.png')]
+        self.transform     = transform
+
+    def __len__(self):
+        return len(self.image_list)
+
+    def __getitem__(self, idx):            
+        image_name = self.image_list[idx]
+        img_path = os.path.join(self.dir, image_name) 
+        
+        image = Image.open(img_path).convert('RGB')
+        image = [self.transform(image) for _ in range(2)]
+
         return image

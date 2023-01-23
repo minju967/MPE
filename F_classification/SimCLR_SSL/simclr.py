@@ -10,7 +10,7 @@ from torch.cuda.amp import GradScaler, autocast
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from utils import save_config_file, accuracy, save_checkpoint
-from F_classification.pytorchtools import EarlyStopping
+
 torch.manual_seed(0)
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,6 @@ class SimCLR(object):
         self.criterion  = torch.nn.CrossEntropyLoss().to(self.device)
 
         self.writer     = SummaryWriter(self.save_path)
-        self.early_stopping = EarlyStopping(patience = 3, verbose=True)
         logging.basicConfig(filename=os.path.join(self.save_path, 'training.log'), level=logging.DEBUG)
         logging.getLogger('matplotlib.font_manager').disabled = True        
 
@@ -81,7 +80,7 @@ class SimCLR(object):
         max_acc = 0
         max_epoch = 0
         logging.info(f"Start SimCLR training for {self.args.epochs} epochs.")
-        logging.info(f"Training with gpu: {self.args.disable_cuda}.")
+        logging.info(f"Training with gpu: {self.args.disable_cuda}.\n")
 
         Train_loss_list = []
         Train_acc_list  = []
@@ -108,9 +107,8 @@ class SimCLR(object):
                 top1, top5 = accuracy(logits, labels, topk=(1, 5))
                 train_loss += loss.item()
                 acc += top1[0].item()
-                logging.info(f'loss : {loss:.5f}')
-                logging.info(f'acc/top1 : {top1[0]}')
-                logging.info(f'acc/top2 : {top5[0]}')
+                logging.info(f'\t[Epoch:{epoch_counter}][{n_iter}||{len(train_loader)}]\tloss: {loss:.5f}\tTop1_acc: {top1[0]:.3f}\tTop5_acc: {top5[0]:.3f}')
+                
 
                 if n_iter % self.args.log_every_n_steps == 0:
                     self.writer.add_scalar('loss', loss, global_step=n_iter)
@@ -149,9 +147,9 @@ class SimCLR(object):
             # warmup for the first 10 epochs
             if epoch_counter >= 10:
                 self.scheduler.step()
-            logging.debug(f"Epoch: {epoch_counter}\tLoss: {loss}\tTop1 accuracy: {top1[0]}\t Epoch accuracy:{acc:.5f}")
-
         
+            logging.debug(f"\t[Epoch:{epoch_counter}]\t[TEST]\tLoss: {loss:.5f}\tTop1 accuracy: {top1[0]:.3f}\t Epoch accuracy:{acc:.3f}\n")
+
         
         self.data_frame.to_csv(os.path.join(self.save_path, 'experiment.csv'))
         self.show_plot(Train_acc_list, Train_loss_list)

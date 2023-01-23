@@ -1,54 +1,94 @@
-from time import time
 from torch.utils.tensorboard import SummaryWriter
-from F_classification.pytorchtools import EarlyStopping
+from time import time
 
 import os
 import copy
 import torch
+import torchvision
 import torch.nn          as nn
 import logging
-import argparse
 import pandas            as pd
 import torch.optim       as optim
-import matplotlib.pyplot as plt
+
+from Fine_tuning.pytorchtools import EarlyStopping
+
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import precision_score
+from sklearn.metrics import recall_score
+from sklearn.metrics import f1_score
+
+os.environ['KMP_DUPLICATE_LIB_OK']='True'
+
 torch.manual_seed(0)
 logger = logging.getLogger(__name__)
 
 class cls_Trainer():
-    def __init__(self, model, train_dataset, test_data, args, device, save) -> None:
+    def __init__(self, model, train_dataset, test_data, args, device, save, loss_weight) -> None:
         super().__init__()
-        self.model = model
-        self.train_data = train_dataset
-        self.test_data = test_data
-        self.device = device
-        self.args =  args
-        self.optimizer = optim.Adam(model.parameters(), lr=1e-3)
-        self.criterion = nn.MultiLabelSoftMarginLoss()
+        self.model           = model
+        self.train_data      = train_dataset
+        self.test_data       = test_data
+        self.device          = device
+        self.args            = args
         self.save_model_path = save
-        self.test_df     = pd.DataFrame(index=range(0,0), columns=['Idx', 'Name', 'A', 'HSM', 'C', 'Cut', 'Wire', 'None', 'Path'])
-        self.train_frame  = pd.DataFrame(index=range(0,0), columns=['Epoch', 'Accuracy'])
-        self.test_frame   = pd.DataFrame(index=range(0,0), columns=['Epoch', 'Accuracy'])
+        
+        self.optimizer       = optim.Adam(model.parameters(), lr=1e-3)
+        self.writer          = SummaryWriter(self.save_model_path)
+        self.early_stopping  = EarlyStopping(patience = 5, verbose=True)
 
-        self.writer     = SummaryWriter(self.save_model_path)
-        self.early_stopping = EarlyStopping(patience = 3, verbose=True)
-        logging.basicConfig(filename=os.path.join(self.save_path, 'training.log'), level=logging.DEBUG)
+        nSamples     = self.cls_sample()
+        loss_Weights = [1 - (x / sum(nSamples)) for x in nSamples]
+        loss_Weights = torch.FloatTensor(loss_Weights).to(device)
+        if loss_weight:
+            self.criterion = nn.MultiLabelSoftMarginLoss()
+        else:
+            self.criterion = nn.MultiLabelSoftMarginLoss(weight=loss_Weights, reduction='mean')
+
+        # train/test matrix 결과 저장
+        self.test_frame     = pd.DataFrame(index=range(0,0), columns=['Epoch', 'Accuracy', 'Precision', 'Recall', 'F1_score'])
+
+        # dataiter = iter(self.train_data)
+        # images, _, _ = dataiter.next()
+
+        # img_gird = torchvision.utils.make_grid(images)
+        # self.writer.add_image('Train_images_Samples', img_gird)
+
+        self.Add_txt()
+
+        logging.basicConfig(filename=os.path.join(self.save_model_path, 'training.log'), level=logging.DEBUG)
         logging.getLogger('matplotlib.font_manager').disabled = True
 
+    def Add_txt(self):
+        Represnetaion = {0:'Fine-tuning model', 1:'Pre-train moedl', 2:'Pre-train+fine_tuning', 3:'BYOL'}
+        self.writer.add_text('Parameters', f' Representaion:{Represnetaion[self.args.pretrain]}')
+        self.writer.add_text('Parameters', f' Backbone:{self.args.backbone}')
+        self.writer.add_text('Parameters', f' Loss weights adaptaion:{self.args.weight}')
+
+
+    def cls_sample(self):
+        csv_path = os.path.join(self.args.Root, self.args.data, 'Train', 'label.csv')
+        data_list = pd.read_csv(csv_path)
+        samples = []
+        for cls in ['A', 'HSM', 'C', 'Cut', 'Wire']:
+            datas = data_list.loc[data_list[cls]==1]
+            samples.append(len(datas.index))
+
+        print(f'Number of Train class data: {samples}\n')
+        return samples
+
     def train(self, epochs):
-        max_acc = 0
+        #######################################
+        #   Multi-label classifier Training
+        #######################################
+        min_loss      = 1000
+        max_recall    = 0
+        max_precision = 0
+        max_f1        = 0
 
         for epoch in range(epochs):
-            Start_time = time()
-            print('='*30)
-            print(f'{epoch}Epoch Train Start')
-
+            print(f'{epoch} Epoch Train Start')
             self.model.train()
-
-            train_loss = 0
-            Num_total_data = 0
-            Num_correct_data = 0
-
-            for i, (images, targets, _ ) in enumerate(self.train_data):
+            for iter, (images, targets, name ) in enumerate(self.train_data):
                 self.optimizer.zero_grad()
                 images = images.to(self.device)
                 targets = targets.to(self.device)
@@ -58,108 +98,98 @@ class cls_Trainer():
                 loss.backward()
                 self.optimizer.step()
         
-                outputs = outputs > 0.5
-                acc = (outputs == targets).float().mean()
-                train_loss += loss.item()
-                
-                results = torch.eq(targets, outputs)
-                for i in range(results.shape[0]):
-                    if sum(list(results[i].numpy())) == 6:
-                        Num_correct_data += 1
-                        Num_total_data += 1
-                    else:
-                        Num_total_data += 1
-
-                logging.info(f'[Train][{i}|{len(self.train_data)}] Loss:{loss.item():.5f} Acc:{acc.item():.5f}')
-
-                if (i+1) % 5 == 0:
-                    print(f'[{i}/{len(self.train_data)}]: Loss:{loss.item():.5f}, Acc:{acc.item():.5f}')
-            
-            epoch_acc = Num_correct_data/Num_total_data
-            logging.info(f'\n[Epoch:{epoch}] Accuary:{epoch_acc:.5f}')
-            print(f'\n[Epoch:{epoch}] Accuary:{epoch_acc:.5f}')
-
-            End_time = time()
-            Learning_time = End_time - Start_time
-            m = Learning_time // 60
-            s = Learning_time % 60
-            print(f'\nLearning Time: {int(m)}min. {int(s)}sec.')
-
-            # train_loss = train_loss/len(self.train_data)
-
-            data = [epoch, f'{epoch_acc:.5f}']
-            df = pd.DataFrame(data=[data], columns=['Epoch', 'Accuracy'])
-            self.train_frame = pd.concat([self.train_frame, df], ignore_index=True)
-
-            test_acc, test_loss = self.test(epoch=epoch, args=self.args)
+                self.writer.add_scalar('Train_loss', loss.item(), global_step=iter)
+            #===================================  Epoch Finish  ===================================
+            # 모델 Test
+            test_loss, test_recall, test_pre, test_f1 = self.test(epoch=epoch)
             self.early_stopping(test_loss, self.model)
             
             if self.early_stopping.early_stop:
-                self.train_frame.to_csv(os.path.join(self.save_model_path, 'train.csv'))
-                self.test_frame.to_csv(os.path.join(self.save_model_path, 'test.csv'))
-                return
+                logging.info(f'__ Early Stopping __')
+
             else:
-                if test_acc > max_acc:
-                    torch.save(copy.deepcopy(self.model.state_dict()), os.path.join(self.save_model_path, 'model_state_dict.pt'))   # 모델 객체의 state_dict 저장
-                    self.test_df.to_csv(os.path.join(self.save_model_path, f'result_{epoch}.csv'))
-                    max_acc = test_acc
-                
-                self.train_frame.to_csv(os.path.join(self.save_model_path, 'train.csv'))
-                self.test_frame.to_csv(os.path.join(self.save_model_path, 'test.csv'))
-                return
+                if test_loss < min_loss:
+                    torch.save(copy.deepcopy(self.model.state_dict()), os.path.join(self.save_model_path, 'Multi-label_best_Loss.pt'))   # 모델 객체의 state_dict 저장
+                    min_loss = test_loss    
+                if test_recall > max_recall:
+                    torch.save(copy.deepcopy(self.model.state_dict()), os.path.join(self.save_model_path, 'Multi-label_best_recall.pt'))   # 모델 객체의 state_dict 저장
+                    max_recall = test_recall
+                if test_pre > max_precision:
+                    torch.save(copy.deepcopy(self.model.state_dict()), os.path.join(self.save_model_path, 'Multi-label_best_precision.pt'))   # 모델 객체의 state_dict 저장
+                    max_precision = test_pre
+                if test_f1 > max_f1:
+                    torch.save(copy.deepcopy(self.model.state_dict()), os.path.join(self.save_model_path, 'Multi-label_best_f1_score.pt'))   # 모델 객체의 state_dict 저장
+                    max_f1 = test_f1
+            print()
+            
+        self.test_frame.to_csv(os.path.join(self.save_model_path, 'test.csv'))
+        logging.info(f'\n\n____ Finish Fine-Tuning: [Loss] {min_loss:.3f}\t[Recall] {max_recall:.3f}\t[Precision] {max_precision:.3f}\t[F1_score] {max_f1:.3f}____')
+        return
 
-    def test(self, epoch, args):
+    def Average(self, lst):
+        return sum(lst) / len(lst)
+
+    def cls_matrix(self, epoch, Predicts, Labels):
+        cls_list = {0:'A', 1:'HSM', 2:'C', 3:'Cut', 4:'Wire'}
+        acc         = []
+        precision   = []
+        recall      = []
+        f1          = []
+
+        for i in range(self.args.num_cls):
+            predict = Predicts[:,i].detach().cpu().tolist()
+            target = Labels[:,i].detach().cpu().tolist()
+
+            Acc = accuracy_score(predict, target)
+            Precision = precision_score(target, predict, pos_label=1, average='micro')
+            Recall = recall_score(target, predict, pos_label=1)
+            F1_score = f1_score(target, predict, pos_label=1)
+
+            acc.append(Acc)
+            precision.append(Precision)
+            recall.append(Recall)
+            f1.append(F1_score)
+
+            print(f'{cls_list[i]} Matrix: Accuracy:{Acc:.3f}\t Precision:{Precision:.3f}\t Recall:{Recall:.3f}\t F1_score:{F1_score:.3f}')
+        
+        acc = self.Average(acc)
+        precision = self.Average(precision)
+        recall = self.Average(recall)
+        f1 = self.Average(f1)
+        print()
+        print(f'{epoch} Epoch Test Accuracy:{acc:.3f}\t Precision:{precision:.3f}\t Recall:{recall:.3f}\t F1_score:{f1:.3f}')
+        print()
+
+        data = [round(i, 3) for i in [epoch, acc, precision, recall, f1]]
+        data = pd.DataFrame(data=[data], columns=['Epoch', 'Accuracy', 'Precision', 'Recall', 'F1_score'])
+        self.test_frame = pd.concat([self.test_frame, data], axis=0)
+        return recall, precision, f1
+
+    @torch.no_grad()
+    def test(self, epoch):
         self.model.eval()
-        batch_size = self.test_data.batch_size
-        batch_index = 0
-        self.test_df = pd.DataFrame(index=range(0,0), columns=['Idx', 'Name', 'A', 'HSM', 'C', 'Cut', 'Wire', 'None', 'Path'])
 
-        total_test  = 0
-        num_acc     = 0
-        test_loss   = 0
-
-        for i, (images, targets, name) in enumerate(self.test_data):
-            images = images.to(self.device)
+        Predicts = torch.rand(size=(0, 5)).to(self.device)
+        Labels   = torch.rand(size=(0, 5)).to(self.device)
+        test_loss = 0
+        iter = 0
+        for iter, (images, targets, name) in enumerate(self.test_data):
+            images  = images.to(self.device)
             targets = targets.to(self.device)
 
             outputs = self.model(images)
-            loss = self.criterion(outputs, targets)
+            loss    = self.criterion(outputs, targets)
             test_loss += loss.item()
 
-            outputs = outputs > 0.5
-            outputs = outputs.long().squeeze(0).detach().cpu().numpy()
-            
-            batch_index = i * batch_size
-            
-            idx  = list(range(batch_index,batch_index+images.shape[0]))
-            path = [os.path.join(args.Root, args.data, 'Test', img) for img in name]
-            A    = list(outputs[:,0])
-            HSM  = list(outputs[:,1])
-            C    = list(outputs[:,2])
-            Cut  = list(outputs[:,3])
-            Wire = list(outputs[:,4])
-            none = list(outputs[:,5])
+            # self.writer.add_scalar('Test_Loss', loss.item(), global_step=iter)
+            outputs = outputs > 0.5            
+            Predicts = torch.cat([Predicts, outputs.long()], dim=0)
+            Labels   = torch.cat([Labels, targets], dim=0)
 
-            targets = targets.long().detach().cpu().numpy()
-            results = []
-            for i in range(images.shape[0]):
-                if list(outputs[i]) == list(targets[i]):
-                    results.append(True)
-                else:
-                    results.append(False)
 
-            df = pd.DataFrame({'Idx':idx, 'Name':name, 'A':A, 'HSM':HSM, 'C':C, 'Cut':Cut, 'Wire':Wire, 'None':none, 'Path':path, 'Result':results})
-            self.test_df = pd.concat([self.test_df, df], ignore_index=True)
-
-            total_test += images.shape[0]
-            num_acc += sum(list(map(int, results)))
-
-        epoch_test_acc = num_acc/total_test
-        logging.info(f'[Test][{epoch}] Acc:{epoch_test_acc:.5f}')
-        print(f'Test_data Acc: {num_acc/total_test:.5f}\n')
+        test_recall, test_pre, test_f1 = self.cls_matrix(epoch, Predicts, Labels)
         
-        data = [epoch, f'{epoch_test_acc:.5f}']
-        df = pd.DataFrame(data=[data], columns=['Epoch', 'Accuracy'])
-        self.test_frame = pd.concat([self.test_frame, df], ignore_index=True)
+        self.writer.add_scalar('Test_loss', loss.item(), global_step=epoch)
+        self.writer.add_scalar('Test_recall', test_recall, global_step=epoch)
 
-        return epoch_test_acc, test_loss
+        return test_loss, test_recall, test_pre, test_f1

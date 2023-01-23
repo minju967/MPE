@@ -1,8 +1,11 @@
 
 *.png
+*.jpg
 *.pt
 *.csv
 *.txt
+*.yaml
+*.pth
 *.log
 *.pyc
 *.ipynb
