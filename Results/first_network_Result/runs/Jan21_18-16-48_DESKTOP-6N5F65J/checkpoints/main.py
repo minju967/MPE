@@ -9,8 +9,8 @@ from models.mlp_head import MLPHead
 from models.resnet_base_network import ResNet18
 from trainer import BYOLTrainer
 
-sys.path.append(os.path.dirname('F_classification'))
-from F_classification.create_dataset import PyTorch_BYOL
+sys.path.append(os.path.dirname('Classification'))
+from Classification.create_dataset import PyTorch_BYOL
 
 
 print(torch.__version__)
@@ -19,7 +19,7 @@ os.environ['KMP_DUPLICATE_LIB_OK']='True'
 
 
 def main():
-    conf_path ='D:\\VS_CODE\\Paper\\F_classification\\PyTorch-BYOL\\config\\config.yaml'
+    conf_path ='D:\\VS_CODE\\Paper\\Classification\\PyTorch-BYOL\\config\\config.yaml'
     config = yaml.load(open(conf_path, "r"), Loader=yaml.FullLoader)
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'

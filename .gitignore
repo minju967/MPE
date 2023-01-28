@@ -9,8 +9,17 @@
 *.log
 *.pyc
 *.ipynb
+*.npy
 *.tar
+events.
+*.yaml
+*.svg
+*.sh
+*.cache
+
 events.out.tfevents.*
+
+backup_main.py
 run.py
 
 !record.txt

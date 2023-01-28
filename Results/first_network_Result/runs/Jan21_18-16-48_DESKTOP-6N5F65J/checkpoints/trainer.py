@@ -23,7 +23,7 @@ class BYOLTrainer:
         self.batch_size = params['batch_size']
         self.num_workers = params['num_workers']
         self.checkpoint_interval = params['checkpoint_interval']
-        dir_path = 'D:\\VS_CODE\\Paper\\F_classification\\PyTorch-BYOL'
+        dir_path = 'D:\\VS_CODE\\Paper\\Classification\\PyTorch-BYOL'
         _create_model_training_folder(self.writer, files_to_same=[f'{dir_path}\\{i}' for i in ["config\\config.yaml", "main.py", 'trainer.py']])
 
     @torch.no_grad()

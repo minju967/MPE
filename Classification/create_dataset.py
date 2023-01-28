@@ -10,14 +10,16 @@ import os
 import cv2
 import numpy as np
 import pandas as pd
+import random
 
 class fine_tuning_Dataset(Dataset):
-    def __init__(self, dir, phase) -> None:
+    def __init__(self, dir, phase, num, sample) -> None:
         super().__init__()
+        self.cls_num = num
+        self.phase = phase
         self.dir = os.path.join(dir, phase)
         if phase == 'Train':
             self.transforms = tf.Compose([
-                            tf.Resize((256,256)),
                             tf.RandomHorizontalFlip(p=0.5),
                             tf.RandomVerticalFlip(p=0.5),
                             tf.ToTensor(),
@@ -27,14 +29,26 @@ class fine_tuning_Dataset(Dataset):
                             ])
         else:
             self.transforms = tf.Compose([
-                            tf.Resize((256,256)),
                             tf.ToTensor(),
                             tf.Normalize
                             ([0.485, 0.456, 0.406],
                              [0.229, 0.224, 0.225])
                             ])
 
-        self.image_list = [file for file in os.listdir(self.dir) if file.endswith('.png')]
+        if sample == 'True':
+            self.image_list = []
+            data_list = pd.read_csv(self.dir+'\\label.csv')
+            cls = ['A', 'HSM', 'Wire']
+            for c in cls:
+                data = data_list[data_list[c]==1]['Name'].values.tolist()
+                self.image_list.extend(data)
+            data = data_list[(data_list['A']==0)&(data_list['HSM']==0)&(data_list['Wire']==0)&(data_list['C']==1)&(data_list['Cut']==1)]['Name'].values.tolist()
+            self.image_list.extend(random.choices(data, k=300))
+            data = data_list[(data_list['A']==0)&(data_list['HSM']==0)&(data_list['Wire']==0)&(data_list['C']==0)&(data_list['Cut']==1)]['Name'].values.tolist()
+            self.image_list.extend(random.choices(data, k=200))
+        else:
+            self.image_list = [file for file in os.listdir(self.dir) if file.endswith('.png')]
+
         self.label_df = pd.read_csv(self.dir+'\\label.csv')
 
     def __len__(self) -> int:
@@ -42,10 +56,21 @@ class fine_tuning_Dataset(Dataset):
 
     def __getitem__(self, index: int) -> Tuple[Tensor]:
         image_name = self.image_list[index]
-        img_path = os.path.join(self.dir, image_name)        
 
+        # img_path = os.path.join(self.dir, image_name)        
+        img_path = os.path.join('D:\\IMAGE\\PyVista_IMAGE_DATA', self.phase, image_name)
+        if not os.path.exists(img_path):
+            if self.phase == 'Train':
+                img_path = os.path.join('D:\\IMAGE\\PyVista_IMAGE_DATA', 'Test', image_name)
+            else:
+                img_path = os.path.join('D:\\IMAGE\\PyVista_IMAGE_DATA', 'Train', image_name)
+        
         image = Image.open(img_path).convert('RGB')
-        target = self.label_df[self.label_df.Name==image_name].values.tolist()[0][3:8]
+        
+        if self.cls_num == 2:
+            target = self.label_df[self.label_df.Name==image_name].values.tolist()[0][5:7]
+        else:
+            target = self.label_df[self.label_df.Name==image_name].values.tolist()[0][3:8]
 
         target = np.array(target).astype(np.float32)
         if self.transforms is not None:
