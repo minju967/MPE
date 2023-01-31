@@ -9,7 +9,7 @@ import torch.nn          as nn
 import logging
 import pandas            as pd
 import torch.optim       as optim
-
+import time
 from Fine_tuning.pytorchtools import EarlyStopping
 
 from sklearn.metrics import accuracy_score
@@ -34,9 +34,9 @@ class cls_Trainer():
         self.max_f1          = 0
         
         if args.PT:
-            self.optimizer       = optim.Adam(model.parameters(), lr=1e-4)
-        else:
             self.optimizer       = optim.Adam(model.parameters(), lr=1e-3)
+        else:
+            self.optimizer       = optim.Adam(model.parameters(), lr=1e-2)
         self.writer          = SummaryWriter(self.save_model_path)
         # self.early_stopping  = EarlyStopping(patience = 5, verbose=True)
 
@@ -47,6 +47,8 @@ class cls_Trainer():
             print(f'With weight Loss Function')
             nSamples     = self.cls_sample()
             loss_Weights = [1 - (x / sum(nSamples)) for x in nSamples]
+            loss_Weights = [(x/sum(loss_Weights)) for x in loss_Weights]
+            print(loss_Weights)
             loss_Weights = torch.FloatTensor(loss_Weights).to(device)
             self.criterion = nn.MultiLabelSoftMarginLoss(weight=loss_Weights, reduction='mean')
 
@@ -99,7 +101,10 @@ class cls_Trainer():
         for epoch in range(epochs):
             print(f'{epoch} Epoch Train Start')
             self.model.train()
+            start = time.time()
             for iter, (images, targets, name) in enumerate(self.train_data):
+                # load_time = time.time()-start
+                # print(f'{load_time//60}m {load_time%60}s\n')
                 self.optimizer.zero_grad()
                 images = images.to(self.device)
                 targets = targets.to(self.device)
@@ -111,41 +116,28 @@ class cls_Trainer():
         
                 self.writer.add_scalar('Train_loss', loss.item(), global_step=iter)
             #===================================  Epoch Finish  ===================================
+
+
             # 모델 Test
             test_loss, test_recall, test_pre, test_f1 = self.test(epoch=epoch)
             logging.info(f'\n\n____ Finish Fine-Tuning: [Loss] {test_loss:.3f}\t[Recall] {test_recall:.3f}\t[Precision] {test_pre:.3f}\t[F1_score] {test_f1:.3f}____')
 
             if test_loss < min_loss:
-                torch.save(copy.deepcopy(self.model.state_dict()), os.path.join(self.save_model_path, 'Multi-label_best_Loss.pt'))   # 모델 객체의 state_dict 저장
+                torch.save(self.model.state_dict(), os.path.join(self.save_model_path, 'Multi-label_best_Loss.pt'))   # 모델 객체의 state_dict 저장
                 min_loss = test_loss    
             if test_recall > max_recall:
-                torch.save(copy.deepcopy(self.model.state_dict()), os.path.join(self.save_model_path, 'Multi-label_best_recall.pt'))   # 모델 객체의 state_dict 저장
+                torch.save(self.model.state_dict(), os.path.join(self.save_model_path, 'Multi-label_best_recall.pt'))   # 모델 객체의 state_dict 저장
                 max_recall = test_recall
             if test_pre > max_precision:
-                torch.save(copy.deepcopy(self.model.state_dict()), os.path.join(self.save_model_path, 'Multi-label_best_precision.pt'))   # 모델 객체의 state_dict 저장
+                torch.save(self.model.state_dict(), os.path.join(self.save_model_path, 'Multi-label_best_precision.pt'))   # 모델 객체의 state_dict 저장
                 max_precision = test_pre
             if test_f1 > self.max_f1:
                 torch.save(copy.deepcopy(self.model.state_dict()), os.path.join(self.save_model_path, 'Multi-label_best_f1_score.pt'))   # 모델 객체의 state_dict 저장
                 self.max_f1 = test_f1
             
-            # self.early_stopping(test_loss, self.model)
-            # if self.early_stopping.early_stop:
-            #     logging.info(f'__ Early Stopping __')
-
-            # else:
-            #     if test_loss < min_loss:
-            #         torch.save(copy.deepcopy(self.model.state_dict()), os.path.join(self.save_model_path, 'Multi-label_best_Loss.pt'))   # 모델 객체의 state_dict 저장
-            #         min_loss = test_loss    
-            #     if test_recall > max_recall:
-            #         torch.save(copy.deepcopy(self.model.state_dict()), os.path.join(self.save_model_path, 'Multi-label_best_recall.pt'))   # 모델 객체의 state_dict 저장
-            #         max_recall = test_recall
-            #     if test_pre > max_precision:
-            #         torch.save(copy.deepcopy(self.model.state_dict()), os.path.join(self.save_model_path, 'Multi-label_best_precision.pt'))   # 모델 객체의 state_dict 저장
-            #         max_precision = test_pre
-            #     if test_f1 > max_f1:
-            #         torch.save(copy.deepcopy(self.model.state_dict()), os.path.join(self.save_model_path, 'Multi-label_best_f1_score.pt'))   # 모델 객체의 state_dict 저장
-            #         max_f1 = test_f1
-            print()
+            load_time = time.time()-start
+            print(f'{load_time//60}m {load_time%60}s\n')            
+            # print()
             
         self.test_frame.to_csv(os.path.join(self.save_model_path, 'test.csv'))
         logging.info(f'\n\n____ Finish Fine-Tuning: [Loss] {min_loss:.3f}\t[Recall] {max_recall:.3f}\t[Precision] {max_precision:.3f}\t[F1_score] {self.max_f1:.3f}____')

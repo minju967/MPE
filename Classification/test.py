@@ -5,9 +5,7 @@ os.environ['KMP_DUPLICATE_LIB_OK']='True'
 
 import matplotlib.pyplot as plt
 import torch
-from create_dataset import (ContrastiveLearningDataset,
-                            ContrastiveLearningViewGenerator,
-                            fine_tuning_Dataset)
+from create_dataset import fine_tuning_Dataset
 from Fine_tuning.models import finetuning_Model
 from Fine_tuning.train import cls_Trainer
 from torch.utils.data import DataLoader
@@ -73,9 +71,9 @@ def cls_matrix(args, Predicts, Labels):
         target = Labels[:,i].detach().cpu().tolist()
 
         Acc = accuracy_score(target, predict)
-        Precision = precision_score(target, predict)
-        Recall = recall_score(target, predict)
-        F1_score = f1_score(target, predict)
+        Precision = precision_score(target, predict, average='weighted') # micro: label마다 데이터 개수가 균형적이고 label마다의 평가지표를 고려할 필요가 없을 때
+        Recall = recall_score(target, predict, average='weighted')       # macro: 모든 label의 중요도가 비슷하고, label마다 데이터 개수가 imbalance한 경우 사용하는 것이 효과적
+        F1_score = f1_score(target, predict, average='weighted')         # weighted: label마다 데이터가 imbalaced 일 때, label마다 support 하는 개수를 고려하고 싶은 경우에 효과적이다. 
 
         acc.append(Acc)
         precision.append(Precision)
@@ -99,12 +97,11 @@ def main(args):
     os.makedirs(save_path, exist_ok=True)
 
     device          = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    test_dataset    = fine_tuning_Dataset(os.path.join(args.Root, args.data), phase='Test',  num=args.num_cls, sample='False')
+    test_dataset    = fine_tuning_Dataset(os.path.join(args.Root, args.data), phase='Test', opt=args)
     test_loader     = DataLoader(test_dataset,  batch_size=args.batch_size, num_workers=args.workers, shuffle=False, pin_memory=True)
 
-    pt_path = 'D:\\VS_CODE\\Paper\\Classification\\Label5_clssification\\experiment_3\\Multi-label_best_f1_score.pt'
-    model = finetuning_Model(model_name='Resnet34', model_PT=pt_path, cls_num=args.num_cls, pt='False').to(device)
-
+    pt_path = 'D:\\VS_CODE\\Paper\\Classification\\Color_Label5_clssification_sampling\\experiment_3\\Multi-label_best_f1_score.pt'
+    model = finetuning_Model(model_name='Resnet34', model_PT=pt_path, cls_num=args.num_cls, pre_train=args.PT).to(device)
     model.eval()
 
     Predicts = torch.rand(size=(0, args.num_cls))
@@ -122,16 +119,6 @@ def main(args):
 
     cls_matrix(args, Predicts, Labels)
 
-
-
-    # Predicts = Predicts.flatten()
-    # Labels   = Labels.flatten()
-    # cf_matrix = confusion_matrix(Labels, Predicts)
-
-    
-    # visualize_confuse_matrix(cf_matrix, os.path.join(save_path, 'figure5.svg'))
-
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--Root', type=str, default='D:\\VS_CODE\\Paper\\Datafolder', help="folder_name")                   
@@ -139,21 +126,15 @@ if __name__ == '__main__':
     parser.add_argument('--pt_path', type=str, default=None, help='model_state_dict_file')   
     parser.add_argument('--pretrain', type=int, default=0, help='0: Fine-tuning model, 1: Pre-train moedl, 2: Pre-train+fine_tuning, 3: BYOL')   
     parser.add_argument('--data', type=str, default='dataset_1', help="Dataset folder")    
+    parser.add_argument('--IMG', type=str, default='Python_IMAGE_DEPTH_COLOR', help="Image type")  
+    parser.add_argument('--Gray', type=str, default='False', help="Dataset folder")         
     parser.add_argument('--batch_size', type=int, default=128, help="batch Size")          
-    parser.add_argument('--epochs', type=int, default=10, help="Epochs")          
     parser.add_argument('--weight', type=str, default='False', help="Add loss function weight")          
-    parser.add_argument('--workers', type=int, default=8, help="workers")          
-    parser.add_argument('--out_dim', default=128, type=int, help='feature dimension (default: 128)')
+    parser.add_argument('--workers', type=int, default=1, help="workers")          
     parser.add_argument('--PT', type=str, default='False', help="")                
     parser.add_argument('--backbone', type=str, default='Resnet34', choices=['Resnet18', 'Resnet34', 'Resnet50', 'EfficientNetB0', 'EfficientNetB1'], help="backbone model")    
     parser.add_argument('--gpu-index', default=0, type=int, help='Gpu index.')
     parser.add_argument('--num_cls', default=5, type=int, help='Number of class.')
-    parser.add_argument('--lr', '--learning-rate', default=0.0001, type=float, metavar='LR', help='initial learning rate', dest='lr')
-    parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float, metavar='W', help='weight decay (default: 1e-4)', dest='weight_decay')
-    parser.add_argument('--fp16-precision', action='store_true', help='Whether or not to use 16-bit precision GPU training.')
-    parser.add_argument('--disable-cuda', action='store_true', help='Disable CUDA')
-    parser.add_argument('--log-every-n-steps', default=10, type=int, help='Log every n steps')
-    parser.add_argument('--temperature', default=0.07, type=float, help='softmax temperature (default: 0.07)')
 
     args = parser.parse_args()
     main(args)
